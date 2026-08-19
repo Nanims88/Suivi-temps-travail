@@ -386,13 +386,15 @@ const C = {
 /* ======================= CATEGORIES ======================= */
 const CATS = [
   { key: "tarifs", label: "Tarifs", group: "production", color: "#0067C0",
-    subs: ["Vérification MAJ tarifs (veille)", "Vérification créations articles (veille)", "Publication hebdomadaire (lundi)", "MAJ tarifaire fournisseurs (annuelle)", "Préparation fichier tarifaire", "Saisie tarifaire", "Création article", "Correction erreur"] },
+    subs: ["Vérification MAJ tarifs (veille)", "Publication hebdomadaire (lundi)", "MAJ tarifaire fournisseurs (annuelle)", "Préparation fichier tarifaire", "Saisie tarifaire", "Correction erreur"] },
+  { key: "creations", label: "Créations", group: "production", color: "#E3008C",
+    subs: ["Vérification créations articles (veille)", "Création article", "MAJ BD articles"] },
   { key: "recherche", label: "Recherche / Info", group: "indirect", color: "#C19C00",
     subs: ["Recherche information", "Information manquante", "Attente fournisseur", "Attente collègue / service"] },
   { key: "support", label: "Support", group: "indirect", color: "#CA5010",
-    subs: ["Demande collègue", "Assistance utilisateur", "Question tarifaire", "Traitement mails"] },
+    subs: ["Demande collègue", "Recherche autres", "Assistance utilisateur", "Question tarifaire", "Traitement mails"] },
   { key: "outils", label: "Data / Outils", group: "indirect", color: "#8764B8",
-    subs: ["Power BI", "Excel / Power Query", "SAP", "Problème outil", "Problème donnée", "Export KPI", "Remontée articles (créations/MAJ)", "MAJ tempo (BD articles)"] },
+    subs: ["Power BI", "Excel / Power Query", "SAP", "Problème outil", "Problème donnée", "Export KPI", "MAJ tempo (BD articles)"] },
   { key: "process", label: "Process", group: "indirect", color: "#038387",
     subs: ["Documentation", "Amélioration processus", "Analyse"] },
   { key: "projets", label: "Projets", group: "projet", color: "#107C10", subs: ["Projet"] },
@@ -403,22 +405,23 @@ const catByKey = (k) => CATS.find((c) => c.key === k);
 
 const PRESETS = [
   { label: "Vérif MAJ veille", cat: "tarifs", sub: "Vérification MAJ tarifs (veille)" },
-  { label: "Vérif créations veille", cat: "tarifs", sub: "Vérification créations articles (veille)" },
+  { label: "Vérif créations veille", cat: "creations", sub: "Vérification créations articles (veille)" },
+  { label: "Créations Articles", cat: "creations", sub: "Création article" },
+  { label: "MAJ BD articles", cat: "creations", sub: "MAJ BD articles" },
   { label: "Publication hebdo", cat: "tarifs", sub: "Publication hebdomadaire (lundi)" },
   { label: "MAJ tarifaire frs", cat: "tarifs", sub: "MAJ tarifaire fournisseurs (annuelle)" },
-  { label: "Recherche", cat: "recherche", sub: "Recherche information" },
-  { label: "Support", cat: "support", sub: "Demande collègue" },
+  { label: "Recherche Tarifs", cat: "recherche", sub: "Recherche information" },
+  { label: "Recherche autres", cat: "support", sub: "Recherche autres" },
+  { label: "Aide opérationnelle", cat: "support", sub: "Demande collègue" },
   { label: "Mails", cat: "support", sub: "Traitement mails" },
-  { label: "Anomalie", cat: "outils", sub: "Problème donnée" },
   { label: "Export KPI", cat: "outils", sub: "Export KPI" },
-  { label: "Remontée articles", cat: "outils", sub: "Remontée articles (créations/MAJ)" },
   { label: "MAJ tempo", cat: "outils", sub: "MAJ tempo (BD articles)" },
   { label: "Réunion", cat: "parasite", sub: "Réunion" },
   { label: "Interruption", cat: "parasite", sub: "Interruption" },
   { label: "Projet", cat: "projets", sub: "Projet" },
   { label: "Hors périmètre", cat: "parasite", sub: "Sujet hors périmètre" },
 ];
-const DURATIONS = [15, 30, 45, 60, 90];
+const DURATIONS = [5, 10, 15, 30, 45, 60, 90];
 
 /* ======================= HELPERS ======================= */
 const pad = (n) => String(n).padStart(2, "0");
