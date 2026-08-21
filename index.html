@@ -562,6 +562,56 @@ function App() {
     loadAll();
   };
 
+  const downloadFile = (content, filename, mime) => {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const exportCSV = () => {
+    const headers = ["date","categorie","sous_categorie","duree_min","sujet_projet","note","statut"];
+    const escape = (v) => `"${String(v ?? "").replace(/"/g,'""')}"`;
+    const rows = [...entries].sort((a,b) => a.date.localeCompare(b.date)).map((e) => [
+      e.date, catByKey(e.cat).label, e.sub, e.minutes, e.subject || "", e.comment || "", e.status,
+    ].map(escape).join(";"));
+    const csv = "\uFEFF" + [headers.join(";"), ...rows].join("\n");
+    downloadFile(csv, `suivi-charge-${toISO(new Date())}.csv`, "text/csv;charset=utf-8");
+  };
+
+  const exportJSON = () => {
+    const dump = JSON.stringify({ entries, dayLogs, projects, settings, exported_at: new Date().toISOString() }, null, 2);
+    downloadFile(dump, `suivi-charge-sauvegarde-${toISO(new Date())}.json`, "application/json");
+  };
+
+  const importJSON = (file) => {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (!confirm(`Restaurer ${data.entries?.length || 0} saisie(s) depuis ce fichier ? Ça remplace les données actuelles.`)) return;
+        if (data.entries) {
+          await sb.from("entries").delete().neq("id", "");
+          if (data.entries.length) await sb.from("entries").insert(data.entries);
+        }
+        if (data.projects) {
+          await sb.from("projects").delete().neq("name", "");
+          if (data.projects.length) await sb.from("projects").insert(data.projects.map((n) => ({ name: n })));
+        }
+        if (data.dayLogs) {
+          const rows = Object.entries(data.dayLogs).map(([date, log]) => ({ date, ...log }));
+          if (rows.length) await sb.from("day_logs").upsert(rows);
+        }
+        if (data.settings) await sb.from("app_settings").upsert({ id: 1, weekly_hours: data.settings.weeklyHours });
+        await loadAll();
+        showToast("Sauvegarde restaurée");
+      } catch (err) { alert("Fichier invalide : " + err.message); }
+    };
+    reader.readAsText(file);
+  };
+
   const applyPreset = (p) => { setSelCat(p.cat); setSelSub(p.sub); };
 
   /* -------- today aggregation -------- */
@@ -671,6 +721,23 @@ function App() {
             <span className="mono" style={{fontSize:12,color:C.faint}}>{entries.length} saisie(s) en base</span>
             <div style={{flex:1}} />
             <button onClick={resetAll} style={{fontSize:12,color:"#D13438",background:"transparent",border:"1px solid #D1343855",borderRadius:8,padding:"6px 10px",cursor:"pointer"}}>Réinitialiser</button>
+          </div>
+
+          <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${C.border2}`}}>
+            <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:6,textTransform:"uppercase",letterSpacing:0.3}}>Export des données</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+              <button onClick={exportCSV} style={{fontSize:12,color:"#0067C0",background:"#0067C018",border:"1px solid #0067C055",borderRadius:8,padding:"6px 12px",cursor:"pointer"}}>
+                📊 Exporter en CSV (Excel / Power BI)
+              </button>
+              <button onClick={exportJSON} style={{fontSize:12,color:"#107C10",background:"#107C1018",border:"1px solid #107C1055",borderRadius:8,padding:"6px 12px",cursor:"pointer"}}>
+                💾 Sauvegarde complète (JSON)
+              </button>
+              <label style={{fontSize:12,color:"#8764B8",background:"#8764B818",border:"1px solid #8764B855",borderRadius:8,padding:"6px 12px",cursor:"pointer"}}>
+                ⤴️ Restaurer depuis un JSON
+                <input type="file" accept=".json" style={{display:"none"}} onChange={(e)=>{if(e.target.files[0]) importJSON(e.target.files[0]); e.target.value="";}} />
+              </label>
+            </div>
+            <div style={{fontSize:11,color:C.faint,marginTop:6}}>Le CSV s'ouvre dans Excel pour analyse. Le JSON est une sauvegarde complète, réimportable ici en cas de besoin.</div>
           </div>
         </div>
       )}
