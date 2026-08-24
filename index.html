@@ -386,9 +386,11 @@ const C = {
 /* ======================= CATEGORIES ======================= */
 const CATS = [
   { key: "tarifs", label: "Tarifs", group: "production", color: "#0067C0",
-    subs: ["Vérification MAJ tarifs (veille)", "Publication hebdomadaire (lundi)", "MAJ tarifaire fournisseurs (annuelle)", "Préparation fichier tarifaire", "Saisie tarifaire", "Correction erreur"] },
+    subs: ["Vérification MAJ tarifs (veille)", "Publication hebdomadaire (lundi)", "MAJ tarifaire fournisseurs (annuelle)", "Préparation fichier tarifaire", "Saisie tarifaire"] },
   { key: "creations", label: "Créations", group: "production", color: "#E3008C",
     subs: ["Vérification créations articles (veille)", "Création article", "MAJ BD articles"] },
+  { key: "erreurs", label: "Erreurs / Corrections", group: "indirect", color: "#5C2E91",
+    subs: ["Erreur de saisie — Tarifs", "Erreur de saisie — BD articles", "Erreur de transmission fournisseur/collègue — Tarifs", "Erreur de transmission fournisseur/collègue — BD articles"] },
   { key: "recherche", label: "Recherche / Info", group: "indirect", color: "#C19C00",
     subs: ["Recherche information", "Information manquante", "Attente fournisseur", "Attente collègue / service"] },
   { key: "support", label: "Support", group: "indirect", color: "#CA5010",
