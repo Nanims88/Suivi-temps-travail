@@ -448,6 +448,10 @@ const startOfMonth = (date) => new Date(date.getFullYear(), date.getMonth(), 1);
 const endOfMonth = (date) => new Date(date.getFullYear(), date.getMonth()+1, 0);
 const fmtDayLabel = (d) => d.toLocaleDateString("fr-FR", { weekday: "short" });
 const getWeeksInMonth = (date) => endOfMonth(date).getDate() / 7;
+const startOfYear = (date) => new Date(date.getFullYear(), 0, 1);
+const endOfYear = (date) => new Date(date.getFullYear(), 11, 31);
+const getWeeksInYear = (date) => { const s = startOfYear(date), e = endOfYear(date); return (Math.round((e-s)/86400000)+1)/7; };
+const MONTH_LABELS = ["Jan","Fév","Mar","Avr","Mai","Juin","Juil","Août","Sep","Oct","Nov","Déc"];
 
 /* ======================= APP ======================= */
 function App() {
@@ -628,6 +632,7 @@ function App() {
   const range = useMemo(() => {
     if (period === "jour") return [refDate, refDate];
     if (period === "semaine") return [startOfWeek(refDate), endOfWeek(refDate)];
+    if (period === "annee") return [startOfYear(refDate), endOfYear(refDate)];
     return [startOfMonth(refDate), endOfMonth(refDate)];
   }, [period, refDate]);
 
@@ -640,6 +645,7 @@ function App() {
     const d = new Date(refDate);
     if (period === "jour") d.setDate(d.getDate() + dir);
     else if (period === "semaine") d.setDate(d.getDate() + dir*7);
+    else if (period === "annee") d.setFullYear(d.getFullYear() + dir);
     else d.setMonth(d.getMonth() + dir);
     setRefDate(d);
   };
@@ -648,6 +654,7 @@ function App() {
     const [s, e] = range;
     if (period === "jour") return s.toLocaleDateString("fr-FR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
     if (period === "semaine") return `${s.toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"})} → ${e.toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit",year:"numeric"})}`;
+    if (period === "annee") return String(refDate.getFullYear());
     return refDate.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
   };
 
@@ -664,7 +671,10 @@ function App() {
 
   const pieData = CATS.map((c) => ({ name: c.label, value: agg.byCat[c.key], color: c.color })).filter((d) => d.value > 0);
   const topConsumers = [...CATS].map((c) => ({ name: c.label, minutes: agg.byCat[c.key], color: c.color })).filter((d) => d.minutes>0).sort((a,b)=>b.minutes-a.minutes).slice(0,5);
-  const theoreticalMinutes = period==="jour" ? dayTheoretical : period==="semaine" ? settings.weeklyHours*60 : Math.round(settings.weeklyHours*60*getWeeksInMonth(refDate));
+  const theoreticalMinutes = period==="jour" ? dayTheoretical
+    : period==="semaine" ? settings.weeklyHours*60
+    : period==="annee" ? Math.round(settings.weeklyHours*60*getWeeksInYear(refDate))
+    : Math.round(settings.weeklyHours*60*getWeeksInMonth(refDate));
   const disponible = Math.max(0, theoreticalMinutes - agg.indirect - agg.projet);
   const indirectPct = agg.total ? Math.round((agg.indirect/agg.total)*100) : 0;
 
@@ -680,6 +690,16 @@ function App() {
         days.push({ label: fmtDayLabel(d), indirect: +(indirect/60).toFixed(2), production: +(production/60).toFixed(2) });
       }
       return days;
+    }
+    if (period === "annee") {
+      const months = Array.from({length:12}, () => ({ indirect:0, production:0 }));
+      periodEntries.forEach((e) => {
+        const m = parseISO(e.date).getMonth();
+        const g = catByKey(e.cat).group;
+        if (g==="indirect") months[m].indirect += e.minutes;
+        if (g==="production") months[m].production += e.minutes;
+      });
+      return months.map((mo,i) => ({ label: MONTH_LABELS[i], indirect:+(mo.indirect/60).toFixed(2), production:+(mo.production/60).toFixed(2) }));
     }
     const weeks = {};
     periodEntries.forEach((e) => {
@@ -845,9 +865,9 @@ function App() {
         <div style={{padding:20,maxWidth:1000,margin:"0 auto"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12,marginBottom:16}}>
             <div style={{display:"flex",gap:4,background:C.panel,borderRadius:10,padding:3,border:`1px solid ${C.border}`}}>
-              {["jour","semaine","mois"].map((p) => (
+              {["jour","semaine","mois","annee"].map((p) => (
                 <button key={p} onClick={()=>setPeriod(p)} style={{padding:"6px 14px",borderRadius:8,fontSize:13,textTransform:"capitalize",
-                  background:period===p?C.panel2:"transparent", color:period===p?C.text:C.muted, border:"none",cursor:"pointer"}}>{p}</button>
+                  background:period===p?C.panel2:"transparent", color:period===p?C.text:C.muted, border:"none",cursor:"pointer"}}>{p==="annee"?"Année":p}</button>
               ))}
             </div>
             <div style={{display:"flex",alignItems:"center",gap:12}}>
