@@ -386,7 +386,7 @@ const C = {
 /* ======================= CATEGORIES ======================= */
 const CATS = [
   { key: "tarifs", label: "Tarifs", group: "production", color: "#0067C0",
-    subs: ["Vérification MAJ tarifs (veille)", "Publication hebdomadaire (lundi)", "MAJ tarifaire fournisseurs (annuelle)", "Préparation fichier tarifaire", "Saisie tarifaire"] },
+    subs: ["Vérification MAJ tarifs (veille)", "Identification tarifs à mettre à jour", "Publication hebdomadaire (lundi)", "MAJ tarifaire fournisseurs (annuelle)", "Préparation fichier tarifaire", "Saisie tarifaire"] },
   { key: "creations", label: "Créations", group: "production", color: "#E3008C",
     subs: ["Vérification créations articles (veille)", "Création article", "MAJ BD articles"] },
   { key: "erreurs", label: "Erreurs / Corrections", group: "indirect", color: "#5C2E91",
@@ -407,6 +407,7 @@ const catByKey = (k) => CATS.find((c) => c.key === k);
 
 const PRESETS = [
   { label: "Vérif MAJ veille", cat: "tarifs", sub: "Vérification MAJ tarifs (veille)" },
+  { label: "Identification tarifs", cat: "tarifs", sub: "Identification tarifs à mettre à jour" },
   { label: "Vérif créations veille", cat: "creations", sub: "Vérification créations articles (veille)" },
   { label: "Créations Articles", cat: "creations", sub: "Création article" },
   { label: "MAJ BD articles", cat: "creations", sub: "MAJ BD articles" },
