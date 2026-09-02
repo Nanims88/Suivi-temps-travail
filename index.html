@@ -386,7 +386,7 @@ const C = {
 /* ======================= CATEGORIES ======================= */
 const CATS = [
   { key: "tarifs", label: "Tarifs", group: "production", color: "#0067C0",
-    subs: ["Vérification MAJ tarifs (veille)", "Identification tarifs à mettre à jour", "Publication hebdomadaire (lundi)", "MAJ tarifaire fournisseurs (annuelle)", "Préparation fichier tarifaire", "Saisie tarifaire"] },
+    subs: ["Vérification MAJ tarifs (veille)", "Identification tarifs à mettre à jour", "Publication hebdomadaire (lundi)", "Préparation & MAJ tarifaire fournisseurs (annuelle)", "Saisie tarifaire", "Vérification ARC — Correction", "Vérification ARC — Explication / contestation"] },
   { key: "creations", label: "Créations", group: "production", color: "#E3008C",
     subs: ["Vérification créations articles (veille)", "Création article", "MAJ BD articles"] },
   { key: "erreurs", label: "Erreurs / Corrections", group: "indirect", color: "#5C2E91",
@@ -394,7 +394,7 @@ const CATS = [
   { key: "recherche", label: "Recherche / Info", group: "indirect", color: "#C19C00",
     subs: ["Recherche information", "Information manquante", "Attente fournisseur", "Attente collègue / service"] },
   { key: "support", label: "Support", group: "indirect", color: "#CA5010",
-    subs: ["Demande collègue", "Recherche autres", "Assistance utilisateur", "Question tarifaire", "Traitement mails"] },
+    subs: ["Demande collègue", "Recherche autres", "Assistance utilisateur", "Traitement mails"] },
   { key: "outils", label: "Data / Outils", group: "indirect", color: "#8764B8",
     subs: ["Power BI", "Excel / Power Query", "SAP", "Problème outil", "Problème donnée", "Export KPI", "MAJ tempo (BD articles)"] },
   { key: "process", label: "Process", group: "indirect", color: "#038387",
@@ -412,7 +412,7 @@ const PRESETS = [
   { label: "Créations Articles", cat: "creations", sub: "Création article" },
   { label: "MAJ BD articles", cat: "creations", sub: "MAJ BD articles" },
   { label: "Publication hebdo", cat: "tarifs", sub: "Publication hebdomadaire (lundi)" },
-  { label: "MAJ tarifaire frs", cat: "tarifs", sub: "MAJ tarifaire fournisseurs (annuelle)" },
+  { label: "MAJ tarifaire frs", cat: "tarifs", sub: "Préparation & MAJ tarifaire fournisseurs (annuelle)" },
   { label: "Recherche Tarifs", cat: "recherche", sub: "Recherche information" },
   { label: "Recherche autres", cat: "support", sub: "Recherche autres" },
   { label: "Aide opérationnelle", cat: "support", sub: "Demande collègue" },
