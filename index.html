@@ -394,7 +394,7 @@ const CATS = [
   { key: "recherche", label: "Recherche / Info", group: "indirect", color: "#C19C00",
     subs: ["Recherche information", "Information manquante", "Attente fournisseur", "Attente collègue / service"] },
   { key: "support", label: "Support", group: "indirect", color: "#CA5010",
-    subs: ["Demande collègue", "Recherche autres", "Assistance utilisateur", "Traitement mails"] },
+    subs: ["Demande collègue", "Recherche autres", "Assistance utilisateur", "Traitement mails", "Écart non catégorisé (pointeuse)"] },
   { key: "outils", label: "Data / Outils", group: "indirect", color: "#8764B8",
     subs: ["Power BI", "Excel / Power Query", "SAP", "Problème outil", "Problème donnée", "Export KPI", "MAJ tempo (BD articles)"] },
   { key: "process", label: "Process", group: "indirect", color: "#038387",
@@ -516,6 +516,15 @@ function App() {
     const { error } = await sb.from("entries").insert(entry);
     if (error) { console.error(error); setSyncError(true); } else { showToast(`+ ${fmt(minutes)} · ${cat.label}`); }
     setSubject(""); setComment(""); setDetails(false); setCustomMin(""); setSelSub(null);
+  };
+
+  const addRawEntry = async (catKey, subLabel, minutes) => {
+    if (!catKey || !subLabel || !minutes) return;
+    const cat = catByKey(catKey);
+    const entry = { id: uid(), date: toISO(new Date()), cat: catKey, sub: subLabel, minutes, subject: "", comment: "Affecté depuis l'écart pointeuse", status: "Terminé", created_at: Date.now() };
+    setEntries((prev) => [entry, ...prev]);
+    const { error } = await sb.from("entries").insert(entry);
+    if (error) { console.error(error); setSyncError(true); } else { showToast(`+ ${fmt(minutes)} · ${cat.label} (écart affecté)`); }
   };
 
   const deleteEntry = async (id) => {
@@ -768,7 +777,7 @@ function App() {
 
       {tab === "saisie" ? (
         <div style={{padding:20,maxWidth:900,margin:"0 auto"}}>
-          <TimeClock log={todayLog} onChange={(l)=>persistDayLog(todayIso,l)} todayTotal={todayTotal} />
+          <TimeClock log={todayLog} onChange={(l)=>persistDayLog(todayIso,l)} todayTotal={todayTotal} onLogEcart={addRawEntry} />
           <DayGauge todayTotal={todayTotal} gaugeMax={gaugeMax} todayEntries={todayEntries} dayTheoretical={dayTheoretical} />
 
           <Section title="Saisie ultra-rapide" subtitle="1 clic pour préremplir, 1 clic pour la durée">
@@ -1065,7 +1074,11 @@ function DayGauge({todayTotal,gaugeMax,todayEntries,dayTheoretical}) {
     </div>
   </div>;
 }
-function TimeClock({log,onChange,todayTotal}) {
+function TimeClock({log,onChange,todayTotal,onLogEcart}) {
+  const [ecartOpen, setEcartOpen] = useState(false);
+  const [ecartCat, setEcartCat] = useState("support");
+  const [ecartSub, setEcartSub] = useState("Écart non catégorisé (pointeuse)");
+  const [ecartMin, setEcartMin] = useState(0);
   const l = log || {};
   const todayIso = toISO(new Date());
   const pauses = l.pauses || [];
@@ -1169,12 +1182,33 @@ function TimeClock({log,onChange,todayTotal}) {
       </div>
     )}
 
-    {l.start_ts && <div style={{display:"flex",gap:16,flexWrap:"wrap",paddingTop:10,borderTop:`1px solid ${C.border}`,fontSize:12}}>
+    {l.start_ts && <div style={{display:"flex",gap:16,flexWrap:"wrap",alignItems:"center",paddingTop:10,borderTop:`1px solid ${C.border}`,fontSize:12}}>
       <span style={{color:C.muted}}>Temps réel : <span className="mono" style={{color:C.text,fontWeight:600}}>{fmt(worked)}</span></span>
       <span style={{color:C.muted}}>Pauses : <span className="mono" style={{color:C.text}}>{fmt(Math.round(pauseMinutesTotal))}</span></span>
       <span style={{color:C.muted}}>Catégorisé : <span className="mono" style={{color:C.text}}>{fmt(todayTotal)}</span></span>
       {ecart !== null && <span style={{color:ecart>5?C.accent:C.faint}}>Écart non catégorisé : <span className="mono" style={{fontWeight:600}}>{ecart>=0?fmt(ecart):`−${fmt(-ecart)}`}</span></span>}
+      {ecart !== null && ecart > 0 && !ecartOpen && (
+        <button onClick={()=>{setEcartMin(Math.round(ecart));setEcartOpen(true);}} style={{padding:"5px 10px",borderRadius:8,fontSize:11,fontWeight:600,border:`1px solid ${C.accent}`,background:"#C19C0015",color:C.accent,cursor:"pointer"}}>
+          📌 Affecter l'écart
+        </button>
+      )}
     </div>}
+
+    {ecartOpen && (
+      <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.border}`,display:"flex",flexWrap:"wrap",alignItems:"center",gap:8}}>
+        <span style={{fontSize:11,color:C.muted}}>Affecter</span>
+        <input type="number" min="1" value={ecartMin} onChange={(e)=>setEcartMin(Math.max(0,parseInt(e.target.value)||0))} className="mono" style={{width:56,padding:"5px 6px",borderRadius:6,border:`1px solid ${C.border2}`,fontSize:12}} />
+        <span style={{fontSize:11,color:C.muted}}>min à</span>
+        <select value={ecartCat} onChange={(e)=>{const c=e.target.value;setEcartCat(c);setEcartSub(catByKey(c).subs[0]);}} style={{padding:"5px 6px",borderRadius:6,border:`1px solid ${C.border2}`,fontSize:12}}>
+          {CATS.map((c)=><option key={c.key} value={c.key}>{c.label}</option>)}
+        </select>
+        <select value={ecartSub} onChange={(e)=>setEcartSub(e.target.value)} style={{padding:"5px 6px",borderRadius:6,border:`1px solid ${C.border2}`,fontSize:12}}>
+          {catByKey(ecartCat).subs.map((s)=><option key={s} value={s}>{s}</option>)}
+        </select>
+        <button onClick={()=>{if(ecartMin>0){onLogEcart(ecartCat,ecartSub,ecartMin);}setEcartOpen(false);}} style={{padding:"5px 12px",borderRadius:8,fontSize:11,fontWeight:600,border:"none",background:"#107C10",color:"#fff",cursor:"pointer"}}>Valider</button>
+        <button onClick={()=>setEcartOpen(false)} style={{padding:"5px 12px",borderRadius:8,fontSize:11,border:`1px solid ${C.border2}`,background:"transparent",color:C.muted,cursor:"pointer"}}>Annuler</button>
+      </div>
+    )}
   </div>;
 }
 
