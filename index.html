@@ -471,6 +471,7 @@ function App() {
   const [tab, setTab] = useState("saisie");
   const [refDate, setRefDate] = useState(new Date());
   const [period, setPeriod] = useState("jour");
+  const [historySearch, setHistorySearch] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [toast, setToast] = useState(null);
   const [syncError, setSyncError] = useState(false);
@@ -655,6 +656,16 @@ function App() {
     const [s, e] = range; const sIso = toISO(s), eIso = toISO(e);
     return entries.filter((en) => en.date >= sIso && en.date <= eIso);
   }, [entries, range]);
+
+  const norm = (s) => (s||"").toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  const searchResults = useMemo(() => {
+    const q = norm(historySearch);
+    if (!q) return [];
+    return entries.filter((en) => {
+      const cat = catByKey(en.cat);
+      return norm(en.subject).includes(q) || norm(en.comment).includes(q) || norm(en.sub).includes(q) || norm(cat && cat.label).includes(q);
+    }).sort((a,b)=>b.date.localeCompare(a.date)||b.created_at-a.created_at);
+  }, [entries, historySearch]);
 
   const navigate = (dir) => {
     const d = new Date(refDate);
@@ -900,7 +911,8 @@ function App() {
             <Kpi label="Disponible production" value={fmt(disponible)} sub="théorique − indirect − projet" color="#616161" />
           </div>
 
-          {agg.total === 0 ? <div style={{color:C.faint,fontSize:13,padding:"40px 0",textAlign:"center"}}>Aucune saisie sur cette période.</div> : (
+          {agg.total === 0 && !historySearch.trim() ? <div style={{color:C.faint,fontSize:13,padding:"40px 0",textAlign:"center"}}>Aucune saisie sur cette période.</div> : null}
+          {agg.total > 0 && (
             <>
               <div style={{display:"grid",gridTemplateColumns:"1.1fr 1fr",gap:16,marginBottom:20}}>
                 <Panel title="Répartition du temps">
@@ -928,17 +940,25 @@ function App() {
                   <SimpleBars data={evolutionData} />
                 </Panel>
               )}
-
-              <Panel title={`Historique (${periodEntries.length})`}>
-                <div style={{maxHeight:320,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
-                  {[...periodEntries].sort((a,b)=>b.date.localeCompare(a.date)||b.created_at-a.created_at).map((e) => (
-                    <EntryRow key={e.id} e={e} showDate onDelete={()=>deleteEntry(e.id)} onToggle={()=>toggleStatus(e.id)}
-                      editing={editingId===e.id} onEditStart={()=>setEditingId(e.id)} onEditCancel={()=>setEditingId(null)} onEditSave={(patch)=>updateEntry(e.id,patch)} />
-                  ))}
-                </div>
-              </Panel>
             </>
           )}
+
+          <Panel title={historySearch.trim() ? `Résultats de recherche (${searchResults.length})` : `Historique (${periodEntries.length})`}>
+            <div style={{marginBottom:10}}>
+              <input type="text" value={historySearch} onChange={(e)=>setHistorySearch(e.target.value)}
+                placeholder="🔍 Rechercher dans tout l'historique — sujet, commentaire, catégorie…"
+                style={{width:"100%",boxSizing:"border-box",background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:8,padding:"9px 10px",fontSize:13,color:C.text}} />
+              {historySearch.trim() && <div style={{fontSize:11,color:C.faint,marginTop:5}}>Recherche sur toutes les périodes, indépendamment du filtre Jour/Semaine/Mois/Année ci-dessus.</div>}
+            </div>
+            <div style={{maxHeight:320,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
+              {(historySearch.trim() ? searchResults : [...periodEntries].sort((a,b)=>b.date.localeCompare(a.date)||b.created_at-a.created_at)).map((e) => (
+                <EntryRow key={e.id} e={e} showDate onDelete={()=>deleteEntry(e.id)} onToggle={()=>toggleStatus(e.id)}
+                  editing={editingId===e.id} onEditStart={()=>setEditingId(e.id)} onEditCancel={()=>setEditingId(null)} onEditSave={(patch)=>updateEntry(e.id,patch)} />
+              ))}
+              {historySearch.trim() && searchResults.length===0 && <div style={{color:C.faint,fontSize:13,padding:"20px 0",textAlign:"center"}}>Aucun résultat pour « {historySearch} ».</div>}
+              {!historySearch.trim() && periodEntries.length===0 && agg.total===0 && <div style={{color:C.faint,fontSize:13,padding:"20px 0",textAlign:"center"}}>Aucune saisie sur cette période.</div>}
+            </div>
+          </Panel>
         </div>
       )}
 
