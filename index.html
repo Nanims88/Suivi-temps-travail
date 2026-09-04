@@ -386,13 +386,13 @@ const C = {
 /* ======================= CATEGORIES ======================= */
 const CATS = [
   { key: "tarifs", label: "Tarifs", group: "production", color: "#0067C0",
-    subs: ["Vérification MAJ tarifs (veille)", "Identification tarifs à mettre à jour", "Publication hebdomadaire (lundi)", "Préparation & MAJ tarifaire fournisseurs (annuelle)", "Saisie tarifaire", "Vérification ARC — Correction", "Vérification ARC — Explication / contestation"] },
+    subs: ["Vérification MAJ tarifs (veille)", "Identification tarifs à mettre à jour", "Publication hebdomadaire (lundi)", "Préparation & MAJ tarifaire fournisseurs (annuelle)", "MAJ tarif — dossier", "Saisie tarifaire", "Vérification ARC — Correction", "Vérification ARC — Explication / contestation"] },
   { key: "creations", label: "Créations", group: "production", color: "#E3008C",
     subs: ["Vérification créations articles (veille)", "Création article", "MAJ BD articles"] },
   { key: "erreurs", label: "Erreurs / Corrections", group: "indirect", color: "#5C2E91",
     subs: ["Erreur de saisie — Tarifs", "Erreur de saisie — BD articles", "Erreur de transmission fournisseur/collègue — Tarifs", "Erreur de transmission fournisseur/collègue — BD articles"] },
   { key: "recherche", label: "Recherche / Info", group: "indirect", color: "#C19C00",
-    subs: ["Recherche information", "Information manquante", "Attente fournisseur", "Attente collègue / service"] },
+    subs: ["Recherche information — Tarifs", "Recherche information — BD articles", "Information manquante", "Attente fournisseur", "Attente collègue / service"] },
   { key: "support", label: "Support", group: "indirect", color: "#CA5010",
     subs: ["Demande collègue", "Recherche autres", "Assistance utilisateur", "Traitement mails", "Écart non catégorisé (pointeuse)"] },
   { key: "outils", label: "Data / Outils", group: "indirect", color: "#8764B8",
@@ -400,8 +400,10 @@ const CATS = [
   { key: "process", label: "Process", group: "indirect", color: "#038387",
     subs: ["Documentation", "Amélioration processus", "Analyse"] },
   { key: "projets", label: "Projets", group: "projet", color: "#107C10", subs: ["Projet"] },
-  { key: "parasite", label: "Charge parasite", group: "indirect", color: "#D13438",
-    subs: ["Sujet hors périmètre", "Urgence", "Interruption", "Réunion", "Demande imprévue",
+  { key: "horsperimetre", label: "Sujet hors périmètre", group: "indirect", color: "#69797E",
+    subs: ["Sujet hors périmètre"] },
+  { key: "parasite", label: "Sollicitations & imprévus", group: "indirect", color: "#D13438",
+    subs: ["Urgence", "Interruption", "Réunion", "Demande imprévue",
       "Sollicitation — Appro", "Sollicitation — Compta", "Sollicitation — Achats", "Sollicitation — Direction", "Sollicitation — Réception", "Sollicitation — Logistique", "Sollicitation — ADV"] },
 ];
 const catByKey = (k) => CATS.find((c) => c.key === k);
@@ -414,7 +416,9 @@ const PRESETS = [
   { label: "MAJ BD articles", cat: "creations", sub: "MAJ BD articles" },
   { label: "Publication hebdo", cat: "tarifs", sub: "Publication hebdomadaire (lundi)" },
   { label: "MAJ tarifaire frs", cat: "tarifs", sub: "Préparation & MAJ tarifaire fournisseurs (annuelle)" },
-  { label: "Recherche Tarifs", cat: "recherche", sub: "Recherche information" },
+  { label: "MAJ tarif dossier", cat: "tarifs", sub: "MAJ tarif — dossier" },
+  { label: "Recherche Tarifs", cat: "recherche", sub: "Recherche information — Tarifs" },
+  { label: "Recherche BD articles", cat: "recherche", sub: "Recherche information — BD articles" },
   { label: "Recherche autres", cat: "support", sub: "Recherche autres" },
   { label: "Aide opérationnelle", cat: "support", sub: "Demande collègue" },
   { label: "Mails", cat: "support", sub: "Traitement mails" },
@@ -423,7 +427,7 @@ const PRESETS = [
   { label: "Réunion", cat: "parasite", sub: "Réunion" },
   { label: "Interruption", cat: "parasite", sub: "Interruption" },
   { label: "Projet", cat: "projets", sub: "Projet" },
-  { label: "Hors périmètre", cat: "parasite", sub: "Sujet hors périmètre" },
+  { label: "Hors périmètre", cat: "horsperimetre", sub: "Sujet hors périmètre" },
 ];
 const DURATIONS = [5, 10, 15, 30, 45, 60, 90];
 
