@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Suivi fournisseurs SICAAP</title>
+<style>
+:root{
+  --abysse:#015959;
+  --abysse-clair:#0A7472;
+  --turquoise:#57CBBB;
+  --orange:#F8AC16;
+  --retard:#A33327;
+  --fond:#F3F5F4;
+  --surface:#FFFFFF;
+  --encre:#16302E;
+  --encre-doux:#5C6F6C;
+  --trait:#DCE3E1;
+  --titre:'Century Gothic','URW Gothic','Questrial','Futura','Trebuchet MS',sans-serif;
+  --corps:'Calibri','Carlito','Segoe UI',system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--fond);color:var(--encre);
+  font-family:var(--corps);font-size:16px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,.f-titre{font-family:var(--titre);font-weight:700;letter-spacing:-.01em;margin:0}
+button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
+a{color:var(--abysse)}
+
+/* ---------- connexion ---------- */
+#connexion{min-height:100vh;display:grid;place-items:center;padding:24px}
+.carte-connexion{
+  background:var(--surface);width:100%;max-width:380px;
+  border:1px solid var(--trait);border-radius:4px;padding:32px;
+}
+.carte-connexion h1{font-size:24px;color:var(--abysse);margin-bottom:4px}
+.carte-connexion p{color:var(--encre-doux);margin:0 0 24px;font-size:15px}
+
+/* ---------- ossature ---------- */
+header{
+  background:var(--abysse);color:#fff;
+  padding:14px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+}
+header h1{font-size:19px;flex:1;min-width:180px}
+header .id{font-size:14px;opacity:.75}
+nav{
+  background:var(--surface);border-bottom:1px solid var(--trait);
+  display:flex;gap:2px;padding:0 12px;overflow-x:auto;
+  position:sticky;top:0;z-index:20;
+}
+nav button{
+  background:none;border:none;border-bottom:3px solid transparent;
+  padding:13px 16px;cursor:pointer;white-space:nowrap;
+  font-family:var(--titre);font-size:15px;color:var(--encre-doux);
+}
+nav button:hover{color:var(--encre)}
+nav button[aria-current="page"]{color:var(--abysse);border-bottom-color:var(--orange)}
+main{max-width:1080px;margin:0 auto;padding:24px 20px 64px}
+
+/* ---------- boutons ---------- */
+.btn{
+  background:var(--abysse);color:#fff;border:1px solid var(--abysse);
+  border-radius:3px;padding:9px 16px;cursor:pointer;font-family:var(--titre);font-size:15px;
+}
+.btn:hover{background:var(--abysse-clair);border-color:var(--abysse-clair)}
+.btn.creux{background:none;color:var(--abysse)}
+.btn.creux:hover{background:#E8F0EE;color:var(--abysse)}
+.btn.mini{padding:5px 11px;font-size:14px}
+.btn.danger{background:none;color:var(--retard);border-color:#E3C4C0}
+.btn.danger:hover{background:#FBEFED}
+button:focus-visible,input:focus-visible,select:focus-visible,
+textarea:focus-visible,a:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
+
+/* ---------- compteurs ---------- */
+.compteurs{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:26px}
+.compteur{
+  background:var(--surface);border:1px solid var(--trait);border-radius:3px;
+  padding:12px 18px;min-width:132px;flex:1;
+}
+.compteur .n{font-family:var(--titre);font-size:28px;font-weight:700;line-height:1.1;display:block}
+.compteur .l{font-size:14px;color:var(--encre-doux)}
+.compteur.retard{border-left:4px solid var(--retard)}
+.compteur.retard .n{color:var(--retard)}
+.compteur.surveiller{border-left:4px solid var(--orange)}
+.compteur.actions{border-left:4px solid var(--turquoise)}
+
+/* ---------- listes ---------- */
+.bloc-titre{
+  display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
+  margin:0 0 12px;
+}
+.bloc-titre h2{font-size:19px;color:var(--abysse)}
+.bloc-titre .compte{color:var(--encre-doux);font-size:15px}
+.liste{background:var(--surface);border:1px solid var(--trait);border-radius:3px}
+.ligne{
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  padding:13px 16px;border-bottom:1px solid var(--trait);
+  border-left:4px solid transparent;cursor:pointer;
+}
+.ligne:last-child{border-bottom:none}
+.ligne:hover{background:#F7FAF9}
+.ligne.retard{border-left-color:var(--retard)}
+.ligne.surveiller{border-left-color:var(--orange)}
+.ligne.sans-tarif{border-left-color:#B9C4C1}
+.ligne .principal{flex:1;min-width:190px}
+.ligne .nom{font-family:var(--titre);font-weight:700}
+.ligne .meta{font-size:14px;color:var(--encre-doux)}
+.ligne .verdict{font-size:14px;text-align:right;min-width:150px}
+.ligne .verdict strong{display:block;font-family:var(--titre)}
+.verdict.retard strong{color:var(--retard)}
+.verdict.surveiller strong{color:#8A5D00}
+.vide{padding:26px 16px;color:var(--encre-doux);background:var(--surface);
+  border:1px solid var(--trait);border-radius:3px}
+
+.filtres{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.filtres input,.filtres select{
+  padding:9px 11px;border:1px solid var(--trait);border-radius:3px;background:var(--surface);
+}
+.filtres input{flex:1;min-width:190px}
+
+/* ---------- fiche ---------- */
+.entete-fiche{
+  background:var(--surface);border:1px solid var(--trait);border-top:4px solid var(--abysse);
+  border-radius:3px;padding:20px;margin-bottom:22px;
+}
+.entete-fiche h2{font-size:23px;margin-bottom:2px}
+.entete-fiche .code{color:var(--encre-doux);font-size:15px;margin-bottom:16px}
+.infos{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px 22px}
+.infos div span{display:block;font-size:13px;color:var(--encre-doux)}
+.infos div b{font-weight:700;font-family:var(--corps)}
+.actions-fiche{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+
+section.bloc{margin-bottom:30px}
+
+/* chronologie des tarifs */
+.chrono{border-left:2px solid var(--trait);margin-left:8px;padding-left:0}
+.jalon{position:relative;padding:0 0 18px 24px}
+.jalon::before{
+  content:"";position:absolute;left:-7px;top:6px;width:12px;height:12px;
+  border-radius:50%;background:var(--trait);
+}
+.jalon.vigueur::before{background:var(--turquoise)}
+.jalon.venir::before{background:var(--orange)}
+.jalon .quand{font-family:var(--titre);font-weight:700}
+.jalon .quoi{font-size:15px}
+.jalon .note{font-size:14px;color:var(--encre-doux)}
+.etiq{
+  display:inline-block;font-size:13px;padding:1px 8px;border-radius:2px;
+  background:#E8F0EE;color:var(--abysse);margin-left:6px;
+}
+.etiq.venir{background:#FDF0D4;color:#8A5D00}
+.etiq.perime{background:#EEF1F0;color:var(--encre-doux)}
+.etiq.faire{background:#FBEFED;color:var(--retard)}
+
+table{width:100%;border-collapse:collapse;background:var(--surface);
+  border:1px solid var(--trait);border-radius:3px}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--trait);font-size:15px}
+th{font-family:var(--titre);font-size:14px;color:var(--encre-doux);font-weight:700}
+tr:last-child td{border-bottom:none}
+
+/* ---------- formulaire modal ---------- */
+dialog{
+  border:none;border-radius:4px;padding:0;width:min(560px,94vw);
+  box-shadow:0 12px 40px rgba(1,89,89,.22);
+}
+dialog::backdrop{background:rgba(22,48,46,.45)}
+dialog .tete{background:var(--abysse);color:#fff;padding:16px 22px;font-family:var(--titre);font-weight:700}
+dialog .corps{padding:22px;max-height:66vh;overflow:auto}
+dialog .pied{padding:14px 22px;border-top:1px solid var(--trait);display:flex;gap:10px;justify-content:flex-end}
+.champ{margin-bottom:15px}
+.champ label{display:block;font-size:14px;color:var(--encre-doux);margin-bottom:4px}
+.champ input,.champ select,.champ textarea{
+  width:100%;padding:9px 11px;border:1px solid var(--trait);border-radius:3px;background:#fff;
+}
+.champ textarea{min-height:76px;resize:vertical}
+.champ .aide{font-size:13px;color:var(--encre-doux);margin-top:4px}
+
+.message{padding:11px 14px;border-radius:3px;margin-bottom:16px;font-size:15px}
+.message.erreur{background:#FBEFED;color:var(--retard);border:1px solid #E3C4C0}
+.message.ok{background:#E8F5F2;color:var(--abysse);border:1px solid var(--turquoise)}
+#toast{
+  position:fixed;left:50%;bottom:26px;transform:translateX(-50%);
+  background:var(--encre);color:#fff;padding:11px 20px;border-radius:3px;
+  font-size:15px;z-index:60;
+}
+[hidden]{display:none !important}
+@media (max-width:620px){
+  main{padding:18px 14px 56px}
+  .ligne .verdict{text-align:left;min-width:0}
+  .compteur{min-width:44%}
+}
+@media (prefers-reduced-motion:no-preference){
+  #toast{animation:monte .18s ease-out}
+  @keyframes monte{from{opacity:0;transform:translate(-50%,10px)}}
+}
+</style>
+</head>
+<body>
+
+<!-- ================= CONNEXION ================= -->
+<div id="connexion">
+  <form class="carte-connexion" id="form-connexion">
+    <h1>Suivi fournisseurs</h1>
+    <p>SICAAP</p>
+    <div id="erreur-connexion" class="message erreur" hidden></div>
+    <div class="champ">
+      <label for="email">Adresse email</label>
+      <input type="email" id="email" autocomplete="username" required>
+    </div>
+    <div class="champ">
+      <label for="mdp">Mot de passe</label>
+      <input type="password" id="mdp" autocomplete="current-password" required>
+    </div>
+    <button class="btn" style="width:100%" type="submit" id="btn-connexion">Se connecter</button>
+  </form>
+</div>
+
+<!-- ================= APPLICATION ================= -->
+<div id="app" hidden>
+  <header>
+    <h1>Suivi fournisseurs</h1>
+    <span class="id" id="qui"></span>
+    <button class="btn mini creux" id="btn-deconnexion"
+            style="background:#fff;border-color:#fff">Se déconnecter</button>
+  </header>
+  <nav>
+    <button data-vue="alertes" aria-current="page">À surveiller</button>
+    <button data-vue="fournisseurs">Fournisseurs</button>
+    <button data-vue="actions">Actions</button>
+  </nav>
+  <main>
+    <div id="vue-alertes"></div>
+    <div id="vue-fournisseurs" hidden></div>
+    <div id="vue-actions" hidden></div>
+    <div id="vue-fiche" hidden></div>
+  </main>
+</div>
+
+<dialog id="modal">
+  <form method="dialog" id="form-modal">
+    <div class="tete" id="modal-titre"></div>
+    <div class="corps" id="modal-corps"></div>
+    <div class="pied">
+      <button class="btn creux" value="annuler" type="submit">Annuler</button>
+      <button class="btn" id="modal-valider" type="button">Enregistrer</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" hidden></div>
+
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+/* =====================================================================
+   1. CONFIGURATION - à remplir une seule fois
+   Supabase > Project Settings > API
+   L'URL et la clé anon sont publiques par nature. Ce qui protège les
+   données, c'est la RLS du fichier schema.sql, pas le secret de la clé.
+   ===================================================================== */
+const SUPABASE_URL = 'https://VOTRE-PROJET.supabase.co';
+const SUPABASE_ANON_KEY = 'VOTRE_CLE_ANON';
+
+const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* =====================================================================
+   2. Référentiels de saisie
+   ===================================================================== */
+const TYPES        = ['National','Régional','Mixte'];
+const SOURCES      = ['BAN Teract','PDF','Excel','Papier','Autre'];
+const FLUX         = ['Direct magasin','Plateforme SICAAP','Dépôt','Mixte'];
+const MODES        = ['Échéance prévisible','Surveillance ancienneté'];
+const STATUTS      = ['Actif','En veille','Clos'];
+const CONDITIONS_T = ['Remise sur facture','RFA','Franco','Escompte','Promotion','Autre'];
+const EVENEMENTS   = ['Réception tarif','Relance','Négociation','Litige','Note','Décision'];
+const SUITES       = ['À faire','Fait','Sans suite'];
+
+const CHAMPS_FOURNISSEUR = [
+  {k:'code',            l:'Code fournisseur', t:'text', req:true,
+   aide:'Reprendre le code de l\'ERP à l\'identique.'},
+  {k:'raison_sociale',  l:'Raison sociale', t:'text', req:true},
+  {k:'type',            l:'Type', t:'select', o:TYPES},
+  {k:'source_tarif',    l:'Source du tarif', t:'select', o:SOURCES},
+  {k:'flux_logistique', l:'Flux logistique', t:'select', o:FLUX},
+  {k:'famille',         l:'Famille ou activité', t:'text'},
+  {k:'mode_suivi',      l:'Mode de suivi', t:'select', o:MODES,
+   aide:'Échéance prévisible : vous saisissez la date de révision. Surveillance ancienneté : elle est calculée depuis le dernier tarif reçu.'},
+  {k:'periodicite_mois',l:'Périodicité attendue (mois)', t:'number'},
+  {k:'prochaine_revision', l:'Prochaine révision attendue', t:'date'},
+  {k:'contact',         l:'Contact commercial', t:'text'},
+  {k:'email',           l:'Email', t:'email'},
+  {k:'telephone',       l:'Téléphone', t:'text'},
+  {k:'franco',          l:'Franco (€)', t:'number'},
+  {k:'mini_commande',   l:'Mini de commande (€)', t:'number'},
+  {k:'delai_livraison', l:'Délai de livraison (jours)', t:'number'},
+  {k:'statut',          l:'Statut', t:'select', o:STATUTS},
+  {k:'commentaire',     l:'Commentaire', t:'textarea'},
+];
+
+const CHAMPS_TARIF = [
+  {k:'reference',       l:'Référence de la version', t:'text', aide:'Par exemple : Tarif 2026, ou Avenant mars 2026.'},
+  {k:'date_application',l:'Date d\'application', t:'date', req:true},
+  {k:'date_reception',  l:'Date de réception', t:'date'},
+  {k:'source',          l:'Source', t:'select', o:SOURCES},
+  {k:'evolution',       l:'Évolution moyenne (%)', t:'number', aide:'Saisir 3.2 pour une hausse de 3,2 %.'},
+  {k:'lien',            l:'Lien vers le document', t:'text'},
+  {k:'commentaire',     l:'Commentaire', t:'textarea'},
+];
+
+const CHAMPS_CONDITION = [
+  {k:'type_condition', l:'Type de condition', t:'select', o:CONDITIONS_T, req:true},
+  {k:'valeur',         l:'Valeur', t:'number'},
+  {k:'unite',          l:'Unité', t:'select', o:['%','€']},
+  {k:'date_debut',     l:'Date de début', t:'date'},
+  {k:'date_fin',       l:'Date de fin', t:'date', aide:'Laisser vide si la condition court sans terme.'},
+  {k:'base_calcul',    l:'Base de calcul', t:'text'},
+  {k:'document',       l:'Document de référence', t:'text'},
+];
+
+const CHAMPS_JOURNAL = [
+  {k:'date',           l:'Date', t:'date', req:true},
+  {k:'type_evenement', l:'Type d\'événement', t:'select', o:EVENEMENTS},
+  {k:'objet',          l:'Objet', t:'text', req:true},
+  {k:'detail',         l:'Détail', t:'textarea'},
+  {k:'suite',          l:'Suite à donner', t:'text'},
+  {k:'echeance',       l:'Échéance', t:'date'},
+  {k:'statut',         l:'Statut', t:'select', o:SUITES},
+];
+
+/* =====================================================================
+   3. Utilitaires
+   ===================================================================== */
+const $ = s => document.querySelector(s);
+const AUJ = () => { const d = new Date(); d.setHours(0,0,0,0); return d; };
+const jour = s => { if(!s) return null; const d = new Date(s+'T00:00:00'); return isNaN(d)?null:d; };
+const iso  = d => d ? d.toISOString().slice(0,10) : null;
+const fr   = s => { const d = jour(s); return d ? d.toLocaleDateString('fr-FR') : '-'; };
+const ecart = d => Math.round((d - AUJ())/86400000);
+const moisPlus = (d,n) => { const r = new Date(d); const j = r.getDate();
+  r.setMonth(r.getMonth()+Number(n)); if(r.getDate()<j) r.setDate(0); return r; };
+const esc = t => String(t ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const nb = v => (v===null||v===undefined||v==='') ? null : Number(v);
+
+function toast(msg){
+  const t = $('#toast'); t.textContent = msg; t.hidden = false;
+  clearTimeout(t._h); t._h = setTimeout(()=>t.hidden = true, 2600);
+}
+
+/* =====================================================================
+   4. État
+   ===================================================================== */
+let D = { fournisseurs:[], tarifs:[], conditions:[], journal:[] };
+let vueCourante = 'alertes';
+let ficheOuverte = null;
+
+async function charger(){
+  const [f,t,c,j] = await Promise.all([
+    db.from('fournisseurs').select('*').order('raison_sociale'),
+    db.from('tarifs').select('*').order('date_application'),
+    db.from('conditions').select('*').order('date_debut'),
+    db.from('journal').select('*').order('date', {ascending:false}),
+  ]);
+  for(const r of [f,t,c,j]) if(r.error) throw r.error;
+  D = { fournisseurs:f.data, tarifs:t.data, conditions:c.data, journal:j.data };
+}
+
+/* =====================================================================
+   5. Règles métier
+   ===================================================================== */
+
+// Versions tarifaires d'un fournisseur, triées, avec fin déduite et statut.
+function versions(fid){
+  const v = D.tarifs.filter(t => t.fournisseur_id === fid)
+    .sort((a,b) => a.date_application.localeCompare(b.date_application));
+  return v.map((t,i) => {
+    const debut = jour(t.date_application);
+    const suiv  = v[i+1] ? jour(v[i+1].date_application) : null;
+    const fin   = suiv ? new Date(suiv.getTime()-86400000) : null;
+    let statut = 'Périmé';
+    if(debut > AUJ())                    statut = 'À venir';
+    else if(!fin || fin >= AUJ())        statut = 'En vigueur';
+    return {...t, debut, fin, statut};
+  });
+}
+
+// Situation d'un fournisseur : dernier tarif, échéance, alerte.
+function situation(f){
+  const v = versions(f.id);
+  const enCours = [...v].reverse().find(x => x.debut <= AUJ()) || null;
+  let echeance = null;
+  if(f.mode_suivi === 'Échéance prévisible'){
+    echeance = jour(f.prochaine_revision);
+  } else if(enCours && f.periodicite_mois){
+    echeance = moisPlus(enCours.debut, f.periodicite_mois);
+  }
+  const jours = echeance ? ecart(echeance) : null;
+  let niveau = 'ok', verdict = 'À jour';
+  if(!enCours){
+    niveau = 'sans-tarif'; verdict = 'Aucun tarif enregistré';
+  } else if(echeance === null){
+    niveau = 'sans-echeance'; verdict = 'Pas d\'échéance définie';
+  } else if(jours < 0){
+    niveau = 'retard';  verdict = `Attendu depuis ${Math.abs(jours)} j`;
+  } else if(jours <= 30){
+    niveau = 'surveiller'; verdict = `Dans ${jours} j`;
+  } else {
+    verdict = `Dans ${jours} j`;
+  }
+  return {f, versions:v, enCours, echeance, jours, niveau, verdict};
+}
+
+const RANG = {retard:0, surveiller:1, 'sans-tarif':2, 'sans-echeance':3, ok:4};
+
+function situations(){
+  return D.fournisseurs
+    .filter(f => f.statut !== 'Clos')
+    .map(situation)
+    .sort((a,b) => RANG[a.niveau]-RANG[b.niveau]
+      || (a.jours ?? 99999)-(b.jours ?? 99999)
+      || a.f.raison_sociale.localeCompare(b.f.raison_sociale));
+}
+
+const nomDe = fid => D.fournisseurs.find(f => f.id === fid)?.raison_sociale ?? 'Sans fournisseur';
+
+/* =====================================================================
+   6. Vues
+   ===================================================================== */
+function afficher(vue){
+  vueCourante = vue; ficheOuverte = null;
+  document.querySelectorAll('nav button').forEach(b =>
+    b.setAttribute('aria-current', b.dataset.vue === vue ? 'page' : 'false'));
+  for(const v of ['alertes','fournisseurs','actions','fiche'])
+    $('#vue-'+v).hidden = (v !== vue);
+  ({alertes:vueAlertes, fournisseurs:vueFournisseurs, actions:vueActions}[vue])();
+  window.scrollTo(0,0);
+}
+
+function vueAlertes(){
+  const s = situations();
+  const n = niv => s.filter(x => x.niveau === niv).length;
+  const aFaire = D.journal.filter(j => j.statut === 'À faire').length;
+  const aTraiter = s.filter(x => ['retard','surveiller','sans-tarif'].includes(x.niveau));
+
+  $('#vue-alertes').innerHTML = `
+    <div class="compteurs">
+      <div class="compteur retard"><span class="n">${n('retard')}</span><span class="l">tarifs en retard</span></div>
+      <div class="compteur surveiller"><span class="n">${n('surveiller')}</span><span class="l">échéances sous 30 jours</span></div>
+      <div class="compteur"><span class="n">${n('sans-tarif')}</span><span class="l">sans tarif enregistré</span></div>
+      <div class="compteur actions"><span class="n">${aFaire}</span><span class="l">actions ouvertes</span></div>
+    </div>
+    <div class="bloc-titre">
+      <h2>Ce qui demande une relance</h2>
+      <span class="compte">${aTraiter.length} fournisseur${aTraiter.length>1?'s':''}</span>
+    </div>
+    ${aTraiter.length ? `<div class="liste">${aTraiter.map(ligne).join('')}</div>`
+      : `<div class="vide">Rien à relancer aujourd'hui. Les prochaines échéances apparaîtront ici trente jours avant leur date.</div>`}`;
+  brancherLignes('#vue-alertes');
+}
+
+function ligne(x){
+  const dernier = x.enCours ? `Tarif du ${x.enCours.debut.toLocaleDateString('fr-FR')}` : 'Jamais de tarif reçu';
+  return `<div class="ligne ${x.niveau}" data-id="${x.f.id}">
+    <div class="principal">
+      <div class="nom">${esc(x.f.raison_sociale)}</div>
+      <div class="meta">${esc(x.f.code)} · ${esc(x.f.type||'type non renseigné')} · ${dernier}</div>
+    </div>
+    <div class="verdict ${x.niveau}">
+      <strong>${esc(x.verdict)}</strong>
+      ${x.echeance ? 'échéance au '+x.echeance.toLocaleDateString('fr-FR') : esc(x.f.mode_suivi||'')}
+    </div>
+  </div>`;
+}
+
+function brancherLignes(scope){
+  document.querySelectorAll(scope+' .ligne[data-id]').forEach(el =>
+    el.addEventListener('click', () => ouvrirFiche(el.dataset.id)));
+}
+
+function vueFournisseurs(){
+  const c = $('#vue-fournisseurs');
+  c.innerHTML = `
+    <div class="bloc-titre">
+      <h2>Fournisseurs</h2>
+      <span class="compte">${D.fournisseurs.length} au total</span>
+      <span style="flex:1"></span>
+      <button class="btn" id="btn-nouveau">Ajouter un fournisseur</button>
+    </div>
+    <div class="filtres">
+      <input type="search" id="rech" placeholder="Rechercher un nom, un code, une famille">
+      <select id="f-type"><option value="">Tous les types</option>${TYPES.map(t=>`<option>${t}</option>`).join('')}</select>
+      <select id="f-statut"><option value="">Tous les statuts</option>${STATUTS.map(t=>`<option>${t}</option>`).join('')}</select>
+    </div>
+    <div id="liste-fournisseurs"></div>`;
+  $('#btn-nouveau').addEventListener('click', () => formulaire({
+    titre:'Nouveau fournisseur', champs:CHAMPS_FOURNISSEUR, table:'fournisseurs',
+    valeurs:{mode_suivi:'Surveillance ancienneté', periodicite_mois:12, statut:'Actif'},
+    apres: vueFournisseurs}));
+  ['rech','f-type','f-statut'].forEach(id =>
+    $('#'+id).addEventListener('input', dessinerFournisseurs));
+  dessinerFournisseurs();
+}
+
+function dessinerFournisseurs(){
+  const q  = ($('#rech')?.value || '').toLowerCase().trim();
+  const ty = $('#f-type')?.value || '';
+  const st = $('#f-statut')?.value || '';
+  const l = D.fournisseurs.map(situation).filter(x =>
+       (!ty || x.f.type === ty)
+    && (!st || x.f.statut === st)
+    && (!q || [x.f.raison_sociale, x.f.code, x.f.famille, x.f.contact]
+         .some(v => (v||'').toLowerCase().includes(q))));
+  $('#liste-fournisseurs').innerHTML = l.length
+    ? `<div class="liste">${l.map(ligne).join('')}</div>`
+    : `<div class="vide">Aucun fournisseur ne correspond à cette recherche.</div>`;
+  brancherLignes('#liste-fournisseurs');
+}
+
+function vueActions(){
+  const ouvertes = D.journal.filter(j => j.statut === 'À faire')
+    .sort((a,b) => (a.echeance||'9999').localeCompare(b.echeance||'9999'));
+  $('#vue-actions').innerHTML = `
+    <div class="bloc-titre">
+      <h2>Actions ouvertes</h2>
+      <span class="compte">${ouvertes.length}</span>
+      <span style="flex:1"></span>
+      <button class="btn" id="btn-note">Ajouter une note</button>
+    </div>
+    ${ouvertes.length ? `<table><thead><tr>
+        <th>Échéance</th><th>Fournisseur</th><th>Objet</th><th>Suite à donner</th><th></th>
+      </tr></thead><tbody>${ouvertes.map(j => `<tr>
+        <td>${fr(j.echeance)}</td>
+        <td>${esc(nomDe(j.fournisseur_id))}</td>
+        <td>${esc(j.objet)}</td>
+        <td>${esc(j.suite||'')}</td>
+        <td><button class="btn mini creux" data-fait="${j.id}">Marquer fait</button></td>
+      </tr>`).join('')}</tbody></table>`
+      : `<div class="vide">Aucune action en attente.</div>`}`;
+  $('#btn-note').addEventListener('click', () => formulaire({
+    titre:'Nouvelle note', table:'journal', apres:vueActions,
+    champs:[{k:'fournisseur_id', l:'Fournisseur', t:'select',
+             o:D.fournisseurs.map(f=>({v:f.id, l:f.raison_sociale}))}, ...CHAMPS_JOURNAL],
+    valeurs:{date:iso(AUJ()), statut:'À faire'}}));
+  document.querySelectorAll('[data-fait]').forEach(b =>
+    b.addEventListener('click', async () => {
+      await enregistrer('journal', {statut:'Fait'}, b.dataset.fait);
+      await charger(); vueActions();
+    }));
+}
+
+/* ---------- fiche fournisseur ---------- */
+async function ouvrirFiche(id){
+  ficheOuverte = id;
+  for(const v of ['alertes','fournisseurs','actions','fiche']) $('#vue-'+v).hidden = (v!=='fiche');
+  dessinerFiche();
+  window.scrollTo(0,0);
+}
+
+function dessinerFiche(){
+  const f = D.fournisseurs.find(x => x.id === ficheOuverte);
+  if(!f) return afficher(vueCourante);
+  const s = situation(f);
+  const cond = D.conditions.filter(c => c.fournisseur_id === f.id);
+  const jour_ = D.journal.filter(j => j.fournisseur_id === f.id);
+
+  const info = (l,v) => `<div><span>${l}</span><b>${esc(v ?? '-')}</b></div>`;
+
+  $('#vue-fiche').innerHTML = `
+    <button class="btn mini creux" id="retour" style="margin-bottom:16px">Retour à la liste</button>
+
+    <div class="entete-fiche">
+      <h2>${esc(f.raison_sociale)}</h2>
+      <div class="code">${esc(f.code)} · ${esc(f.type||'type non renseigné')} · ${esc(f.statut||'')}</div>
+      <div class="infos">
+        ${info('Mode de suivi', f.mode_suivi)}
+        ${info('Prochaine échéance', s.echeance ? s.echeance.toLocaleDateString('fr-FR') : 'non définie')}
+        ${info('Tarif en vigueur depuis', s.enCours ? s.enCours.debut.toLocaleDateString('fr-FR') : 'aucun')}
+        ${info('Flux logistique', f.flux_logistique)}
+        ${info('Source du tarif', f.source_tarif)}
+        ${info('Famille', f.famille)}
+        ${info('Contact', f.contact)}
+        ${info('Email', f.email)}
+        ${info('Téléphone', f.telephone)}
+        ${info('Franco', f.franco ? f.franco+' €' : null)}
+        ${info('Mini de commande', f.mini_commande ? f.mini_commande+' €' : null)}
+        ${info('Délai de livraison', f.delai_livraison ? f.delai_livraison+' jours' : null)}
+      </div>
+      ${f.commentaire ? `<p style="margin:16px 0 0">${esc(f.commentaire)}</p>` : ''}
+      <div class="actions-fiche">
+        <button class="btn mini" data-add="tarif">Enregistrer un tarif</button>
+        <button class="btn mini creux" data-add="condition">Ajouter une condition</button>
+        <button class="btn mini creux" data-add="note">Ajouter une note</button>
+        <button class="btn mini creux" id="modifier">Modifier la fiche</button>
+        <button class="btn mini danger" id="supprimer">Supprimer</button>
+      </div>
+    </div>
+
+    <section class="bloc">
+      <div class="bloc-titre"><h2>Versions tarifaires</h2><span class="compte">${s.versions.length}</span></div>
+      ${s.versions.length ? `<div class="chrono">${[...s.versions].reverse().map(v => `
+        <div class="jalon ${v.statut==='En vigueur'?'vigueur':v.statut==='À venir'?'venir':''}">
+          <div class="quand">${v.debut.toLocaleDateString('fr-FR')}
+            <span class="etiq ${v.statut==='À venir'?'venir':v.statut==='Périmé'?'perime':''}">${v.statut}</span></div>
+          <div class="quoi">${esc(v.reference || 'Version sans référence')}
+            ${v.evolution!=null ? ` · ${v.evolution>0?'+':''}${v.evolution} %` : ''}
+            ${v.fin ? ` · jusqu'au ${v.fin.toLocaleDateString('fr-FR')}` : ''}</div>
+          <div class="note">Reçu le ${fr(v.date_reception)}${v.source?' · '+esc(v.source):''}
+            ${v.lien ? ` · <a href="${esc(v.lien)}" target="_blank" rel="noopener">document</a>` : ''}
+            ${v.commentaire ? '<br>'+esc(v.commentaire) : ''}
+            <button class="btn mini creux" data-del-tarif="${v.id}" style="margin-left:6px">Supprimer</button></div>
+        </div>`).join('')}</div>`
+        : `<div class="vide">Aucune version enregistrée. La première saisie fixe le point de départ de l'historique.</div>`}
+    </section>
+
+    <section class="bloc">
+      <div class="bloc-titre"><h2>Conditions commerciales</h2><span class="compte">${cond.length}</span></div>
+      ${cond.length ? `<table><thead><tr><th>Type</th><th>Valeur</th><th>Période</th><th>Base</th><th></th></tr></thead>
+        <tbody>${cond.map(c => {
+          const fin = jour(c.date_fin), deb = jour(c.date_debut);
+          const etat = deb && deb > AUJ() ? 'À venir' : (!fin || fin >= AUJ() ? 'En vigueur' : 'Échue');
+          return `<tr>
+            <td>${esc(c.type_condition)} <span class="etiq ${etat==='Échue'?'perime':etat==='À venir'?'venir':''}">${etat}</span></td>
+            <td>${c.valeur!=null ? esc(c.valeur)+' '+esc(c.unite||'') : '-'}</td>
+            <td>${fr(c.date_debut)} au ${c.date_fin?fr(c.date_fin):'sans terme'}</td>
+            <td>${esc(c.base_calcul||'')}</td>
+            <td><button class="btn mini creux" data-del-cond="${c.id}">Supprimer</button></td>
+          </tr>`;}).join('')}</tbody></table>`
+        : `<div class="vide">Aucune condition enregistrée.</div>`}
+    </section>
+
+    <section class="bloc">
+      <div class="bloc-titre"><h2>Historique des échanges</h2><span class="compte">${jour_.length}</span></div>
+      ${jour_.length ? `<div class="liste">${jour_.map(j => `
+        <div class="ligne" style="cursor:default">
+          <div class="principal">
+            <div class="nom">${esc(j.objet)}
+              ${j.statut==='À faire' ? '<span class="etiq faire">À faire</span>' : ''}</div>
+            <div class="meta">${fr(j.date)} · ${esc(j.type_evenement||'')}
+              ${j.detail ? '<br>'+esc(j.detail) : ''}
+              ${j.suite ? '<br>Suite : '+esc(j.suite)+(j.echeance?' pour le '+fr(j.echeance):'') : ''}</div>
+          </div>
+          <div>
+            ${j.statut==='À faire' ? `<button class="btn mini creux" data-fait="${j.id}">Marquer fait</button>` : ''}
+            <button class="btn mini creux" data-del-note="${j.id}">Supprimer</button>
+          </div>
+        </div>`).join('')}</div>`
+        : `<div class="vide">Aucun échange tracé pour ce fournisseur.</div>`}
+    </section>`;
+
+  $('#retour').addEventListener('click', () => afficher(vueCourante));
+  $('#modifier').addEventListener('click', () => formulaire({
+    titre:'Modifier la fiche', champs:CHAMPS_FOURNISSEUR, table:'fournisseurs',
+    valeurs:f, id:f.id, apres:dessinerFiche}));
+  $('#supprimer').addEventListener('click', async () => {
+    if(!confirm(`Supprimer ${f.raison_sociale} ainsi que ses tarifs, conditions et notes ?`)) return;
+    await db.from('fournisseurs').delete().eq('id', f.id);
+    await charger(); toast('Fournisseur supprimé'); afficher(vueCourante);
+  });
+
+  document.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', () => {
+    const type = b.dataset.add;
+    if(type === 'tarif') formulaire({titre:'Nouveau tarif', champs:CHAMPS_TARIF, table:'tarifs',
+      valeurs:{fournisseur_id:f.id, source:f.source_tarif, date_reception:iso(AUJ())},
+      fixe:{fournisseur_id:f.id}, apres:dessinerFiche});
+    if(type === 'condition') formulaire({titre:'Nouvelle condition', champs:CHAMPS_CONDITION, table:'conditions',
+      valeurs:{fournisseur_id:f.id, unite:'%'}, fixe:{fournisseur_id:f.id}, apres:dessinerFiche});
+    if(type === 'note') formulaire({titre:'Nouvelle note', champs:CHAMPS_JOURNAL, table:'journal',
+      valeurs:{fournisseur_id:f.id, date:iso(AUJ()), statut:'À faire'},
+      fixe:{fournisseur_id:f.id}, apres:dessinerFiche});
+  }));
+
+  const suppr = (attr, table, question) =>
+    document.querySelectorAll('['+attr+']').forEach(b => b.addEventListener('click', async () => {
+      if(!confirm(question)) return;
+      await db.from(table).delete().eq('id', b.getAttribute(attr));
+      await charger(); toast('Supprimé'); dessinerFiche();
+    }));
+  suppr('data-del-tarif','tarifs','Supprimer cette version tarifaire ?');
+  suppr('data-del-cond','conditions','Supprimer cette condition ?');
+  suppr('data-del-note','journal','Supprimer cette note ?');
+  document.querySelectorAll('[data-fait]').forEach(b => b.addEventListener('click', async () => {
+    await enregistrer('journal', {statut:'Fait'}, b.dataset.fait);
+    await charger(); dessinerFiche();
+  }));
+}
+
+/* =====================================================================
+   7. Formulaire générique
+   ===================================================================== */
+function formulaire({titre, champs, table, valeurs={}, id=null, fixe={}, apres}){
+  $('#modal-titre').textContent = titre;
+  $('#modal-corps').innerHTML = champs.map(c => {
+    const v = valeurs[c.k] ?? '';
+    const aide = c.aide ? `<div class="aide">${c.aide}</div>` : '';
+    let saisie;
+    if(c.t === 'select'){
+      const opts = c.o.map(o => typeof o === 'string' ? {v:o, l:o} : o);
+      saisie = `<select id="c-${c.k}" ${c.req?'required':''}>
+        <option value="">-</option>
+        ${opts.map(o => `<option value="${esc(o.v)}" ${String(v)===String(o.v)?'selected':''}>${esc(o.l)}</option>`).join('')}
+      </select>`;
+    } else if(c.t === 'textarea'){
+      saisie = `<textarea id="c-${c.k}">${esc(v)}</textarea>`;
+    } else {
+      saisie = `<input type="${c.t}" id="c-${c.k}" value="${esc(v)}"
+        ${c.t==='number'?'step="any"':''} ${c.req?'required':''}>`;
+    }
+    return `<div class="champ"><label for="c-${c.k}">${c.l}${c.req?' *':''}</label>${saisie}${aide}</div>`;
+  }).join('');
+
+  const valider = async () => {
+    const data = {...fixe};
+    for(const c of champs){
+      let v = $('#c-'+c.k).value.trim();
+      if(c.req && !v){ toast('Le champ « '+c.l+' » est obligatoire'); $('#c-'+c.k).focus(); return; }
+      data[c.k] = (c.t === 'number') ? nb(v) : (v === '' ? null : v);
+    }
+    try{
+      await enregistrer(table, data, id);
+      await charger();
+      $('#modal').close();
+      toast(id ? 'Modifications enregistrées' : 'Enregistré');
+      apres && apres();
+    }catch(e){
+      toast(messageErreur(e));
+    }
+  };
+  const bouton = $('#modal-valider');
+  bouton.replaceWith(bouton.cloneNode(true));
+  $('#modal-valider').addEventListener('click', valider);
+  $('#modal').showModal();
+}
+
+async function enregistrer(table, data, id){
+  const r = id ? await db.from(table).update(data).eq('id', id)
+               : await db.from(table).insert(data);
+  if(r.error) throw r.error;
+}
+
+function messageErreur(e){
+  const m = e?.message || '';
+  if(m.includes('duplicate key')) return 'Ce code fournisseur existe déjà.';
+  if(m.includes('violates row-level security')) return 'Session expirée. Se reconnecter.';
+  return 'Enregistrement impossible : ' + m;
+}
+
+/* =====================================================================
+   8. Connexion et démarrage
+   ===================================================================== */
+$('#form-connexion').addEventListener('submit', async e => {
+  e.preventDefault();
+  const b = $('#btn-connexion'); b.disabled = true; b.textContent = 'Connexion...';
+  const {error} = await db.auth.signInWithPassword({
+    email: $('#email').value.trim(), password: $('#mdp').value});
+  b.disabled = false; b.textContent = 'Se connecter';
+  if(error){
+    const z = $('#erreur-connexion');
+    z.textContent = 'Identifiants non reconnus. Vérifier l\'adresse et le mot de passe.';
+    z.hidden = false;
+  }
+});
+
+$('#btn-deconnexion').addEventListener('click', async () => {
+  await db.auth.signOut(); location.reload();
+});
+
+document.querySelectorAll('nav button').forEach(b =>
+  b.addEventListener('click', () => afficher(b.dataset.vue)));
+
+async function demarrer(session){
+  $('#connexion').hidden = true;
+  $('#app').hidden = false;
+  $('#qui').textContent = session.user.email;
+  try{
+    await charger();
+    afficher('alertes');
+  }catch(e){
+    $('main').innerHTML = `<div class="message erreur">Lecture des données impossible : ${esc(e.message)}
+      <br>Vérifier que le script schema.sql a bien été exécuté dans Supabase.</div>`;
+  }
+}
+
+db.auth.getSession().then(({data}) => { if(data.session) demarrer(data.session); });
+db.auth.onAuthStateChange((ev, session) => {
+  if(ev === 'SIGNED_IN' && session) demarrer(session);
+});
+</script>
+</body>
+</html>
