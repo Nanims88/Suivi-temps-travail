@@ -758,7 +758,20 @@ $('#form-connexion').addEventListener('submit', async e => {
   b.disabled = false; b.textContent = 'Se connecter';
   if(error){
     const z = $('#erreur-connexion');
-    z.textContent = 'Identifiants non reconnus. Vérifier l\'adresse et le mot de passe.';
+    const m = (error.message || '').toLowerCase();
+    let explication;
+    if(m.includes('not confirmed'))
+      explication = 'Adresse non confirmée. Dans Supabase, Authentication > Users, ouvrir l\'utilisateur et le confirmer, ou le recréer en cochant Auto Confirm User.';
+    else if(m.includes('disabled') || m.includes('not enabled'))
+      explication = 'La connexion par email est désactivée sur le projet. Réactiver le fournisseur Email dans Authentication, en ne désactivant que les inscriptions.';
+    else if(m.includes('rate limit'))
+      explication = 'Trop de tentatives. Attendre quelques minutes.';
+    else if(m.includes('failed to fetch') || m.includes('network'))
+      explication = 'Projet Supabase injoignable. Vérifier l\'URL et la connexion réseau.';
+    else
+      explication = 'Vérifier l\'adresse et le mot de passe, sans espace avant ou après.';
+    z.innerHTML = explication + '<br><small style="opacity:.75">Message Supabase : '
+      + (error.message || 'inconnu') + (error.code ? ' (' + error.code + ')' : '') + '</small>';
     z.hidden = false;
   }
 });
