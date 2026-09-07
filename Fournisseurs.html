@@ -230,11 +230,13 @@ dialog .pied{padding:14px 22px;border-top:1px solid var(--trait);display:flex;ga
     <button data-vue="alertes" aria-current="page">À surveiller</button>
     <button data-vue="fournisseurs">Fournisseurs</button>
     <button data-vue="actions">Actions</button>
+    <button data-vue="donnees">Données</button>
   </nav>
   <main>
     <div id="vue-alertes"></div>
     <div id="vue-fournisseurs" hidden></div>
     <div id="vue-actions" hidden></div>
+    <div id="vue-donnees" hidden></div>
     <div id="vue-fiche" hidden></div>
   </main>
 </div>
@@ -433,9 +435,9 @@ function afficher(vue){
   vueCourante = vue; ficheOuverte = null;
   document.querySelectorAll('nav button').forEach(b =>
     b.setAttribute('aria-current', b.dataset.vue === vue ? 'page' : 'false'));
-  for(const v of ['alertes','fournisseurs','actions','fiche'])
+  for(const v of ['alertes','fournisseurs','actions','donnees','fiche'])
     $('#vue-'+v).hidden = (v !== vue);
-  ({alertes:vueAlertes, fournisseurs:vueFournisseurs, actions:vueActions}[vue])();
+  ({alertes:vueAlertes, fournisseurs:vueFournisseurs, actions:vueActions, donnees:vueDonnees}[vue])();
   window.scrollTo(0,0);
 }
 
@@ -554,7 +556,7 @@ function vueActions(){
 /* ---------- fiche fournisseur ---------- */
 async function ouvrirFiche(id){
   ficheOuverte = id;
-  for(const v of ['alertes','fournisseurs','actions','fiche']) $('#vue-'+v).hidden = (v!=='fiche');
+  for(const v of ['alertes','fournisseurs','actions','donnees','fiche']) $('#vue-'+v).hidden = (v!=='fiche');
   dessinerFiche();
   window.scrollTo(0,0);
 }
@@ -685,6 +687,236 @@ function dessinerFiche(){
     await enregistrer('journal', {statut:'Fait'}, b.dataset.fait);
     await charger(); dessinerFiche();
   }));
+}
+
+/* =====================================================================
+   6 bis. Import et export
+   ===================================================================== */
+
+// Description des tables pour l'import comme pour l'export.
+const TABLES = {
+  fournisseurs: {l:'Fournisseurs', champs:CHAMPS_FOURNISSEUR, cle:'code'},
+  tarifs:       {l:'Tarifs',       champs:CHAMPS_TARIF,      lien:true},
+  conditions:   {l:'Conditions',   champs:CHAMPS_CONDITION,  lien:true},
+  journal:      {l:'Journal',      champs:CHAMPS_JOURNAL,    lien:true},
+};
+
+const sansAccent = t => String(t).normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+  .toLowerCase().replace(/[^a-z0-9]/g,'');
+
+// Colonnes exportées : le code fournisseur remplace l'identifiant technique.
+function colonnes(table){
+  const d = TABLES[table];
+  const base = d.champs.map(c => ({k:c.k, l:c.l}));
+  return d.lien ? [{k:'code_fournisseur', l:'Code fournisseur'}, ...base] : base;
+}
+
+/* ---------- export ---------- */
+function versCSV(table){
+  const cols = colonnes(table);
+  const codes = Object.fromEntries(D.fournisseurs.map(f => [f.id, f.code]));
+  const lignes = D[table].map(r => cols.map(c => {
+    let v = c.k === 'code_fournisseur' ? codes[r.fournisseur_id] : r[c.k];
+    if(v === null || v === undefined) return '';
+    v = String(v);
+    return /[";\n]/.test(v) ? '"' + v.replace(/"/g,'""') + '"' : v;
+  }).join(';'));
+  return '\uFEFF' + cols.map(c => c.l).join(';') + '\n' + lignes.join('\n');
+}
+
+function telecharger(nom, contenu, type){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([contenu], {type:type}));
+  a.download = nom;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+const horodatage = () => new Date().toISOString().slice(0,10).replace(/-/g,'');
+
+/* ---------- lecture d'un CSV ---------- */
+function lireCSV(texte){
+  texte = texte.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+  const premiere = texte.split('\n')[0];
+  const sep = (premiere.split(';').length >= premiere.split(',').length) ? ';' : ',';
+  const lignes = [];
+  let champ = '', ligne = [], guillemets = false;
+  for(let i = 0; i < texte.length; i++){
+    const c = texte[i];
+    if(guillemets){
+      if(c === '"' && texte[i+1] === '"'){ champ += '"'; i++; }
+      else if(c === '"') guillemets = false;
+      else champ += c;
+    } else if(c === '"') guillemets = true;
+    else if(c === sep){ ligne.push(champ); champ = ''; }
+    else if(c === '\n'){ ligne.push(champ); lignes.push(ligne); ligne = []; champ = ''; }
+    else champ += c;
+  }
+  if(champ !== '' || ligne.length){ ligne.push(champ); lignes.push(ligne); }
+  return lignes.filter(l => l.some(v => v.trim() !== ''));
+}
+
+// Conversions tolérantes : dates françaises, décimales à la virgule.
+function versDate(v){
+  v = String(v).trim();
+  if(!v) return null;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const m = v.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/);
+  if(!m) return null;
+  const an = m[3].length === 2 ? '20'+m[3] : m[3];
+  return `${an}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+}
+function versNombre(v){
+  v = String(v).replace(/[€%\s\u00A0]/g,'').replace(',','.').trim();
+  if(v === '') return null;
+  const n = Number(v);
+  return isNaN(n) ? null : n;
+}
+
+/* ---------- import ---------- */
+async function importer(table, texte){
+  const d = TABLES[table];
+  const cols = colonnes(table);
+  const lignes = lireCSV(texte);
+  if(lignes.length < 2) return {erreurs:['Le fichier ne contient pas de données sous l\'en-tête.']};
+
+  // Correspondance des en-têtes : libellé français ou nom de colonne technique.
+  const index = {};
+  const inconnues = [];
+  lignes[0].forEach((titre, i) => {
+    const t = sansAccent(titre);
+    const col = cols.find(c => sansAccent(c.l) === t || sansAccent(c.k) === t);
+    if(col) index[col.k] = i; else if(titre.trim()) inconnues.push(titre.trim());
+  });
+
+  const obligatoire = d.lien ? 'code_fournisseur' : 'code';
+  if(index[obligatoire] === undefined)
+    return {erreurs:[`Colonne « ${d.lien ? 'Code fournisseur' : 'Code fournisseur'} » absente du fichier.`]};
+
+  const parCode = Object.fromEntries(D.fournisseurs.map(f => [f.code.trim().toLowerCase(), f.id]));
+  const type = Object.fromEntries(d.champs.map(c => [c.k, c.t]));
+  const rangs = [], erreurs = [];
+
+  lignes.slice(1).forEach((l, n) => {
+    const numero = n + 2;
+    const obj = {};
+    if(d.lien){
+      const code = (l[index.code_fournisseur] || '').trim().toLowerCase();
+      const id = parCode[code];
+      if(!id){ erreurs.push(`Ligne ${numero} : code fournisseur « ${l[index.code_fournisseur]||''} » introuvable.`); return; }
+      obj.fournisseur_id = id;
+    }
+    for(const c of cols){
+      if(c.k === 'code_fournisseur' || index[c.k] === undefined) continue;
+      const brut = (l[index[c.k]] ?? '').trim();
+      if(brut === ''){ obj[c.k] = null; continue; }
+      if(type[c.k] === 'date'){
+        const dt = versDate(brut);
+        if(!dt){ erreurs.push(`Ligne ${numero} : date « ${brut} » illisible dans la colonne ${c.l}.`); return; }
+        obj[c.k] = dt;
+      }
+      else if(type[c.k] === 'number') obj[c.k] = versNombre(brut);
+      else obj[c.k] = brut;
+    }
+    if(table === 'fournisseurs' && !obj.code){ erreurs.push(`Ligne ${numero} : code fournisseur vide.`); return; }
+    if(table === 'tarifs' && !obj.date_application){ erreurs.push(`Ligne ${numero} : date d'application manquante.`); return; }
+    if(table === 'journal' && !obj.objet){ erreurs.push(`Ligne ${numero} : objet manquant.`); return; }
+    rangs.push(obj);
+  });
+
+  let enregistres = 0;
+  for(let i = 0; i < rangs.length; i += 100){
+    const lot = rangs.slice(i, i+100);
+    const r = d.cle
+      ? await db.from(table).upsert(lot, {onConflict:d.cle})
+      : await db.from(table).insert(lot);
+    if(r.error){ erreurs.push(`Enregistrement interrompu : ${r.error.message}`); break; }
+    enregistres += lot.length;
+  }
+  return {enregistres, erreurs, inconnues, total:lignes.length - 1};
+}
+
+function vueDonnees(){
+  const options = Object.entries(TABLES)
+    .map(([k,v]) => `<option value="${k}">${v.l}</option>`).join('');
+  $('#vue-donnees').innerHTML = `
+    <div class="bloc-titre"><h2>Exporter</h2></div>
+    <div class="liste" style="padding:16px">
+      <p style="margin:0 0 14px">Fichiers CSV séparés par des points-virgules, lisibles directement dans Excel.
+      Les tables liées portent le code fournisseur, pas l'identifiant technique.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${Object.entries(TABLES).map(([k,v]) =>
+          `<button class="btn creux mini" data-export="${k}">${v.l}</button>`).join('')}
+        <button class="btn mini" data-export="tout">Sauvegarde complète (JSON)</button>
+      </div>
+    </div>
+
+    <div class="bloc-titre" style="margin-top:30px"><h2>Importer</h2></div>
+    <div class="liste" style="padding:16px">
+      <p style="margin:0 0 14px">Préparez vos lignes dans Excel, enregistrez en CSV, puis chargez le fichier.
+      Les dates sont acceptées au format jj/mm/aaaa, les décimales à la virgule.</p>
+      <div class="champ">
+        <label for="imp-table">Table de destination</label>
+        <select id="imp-table">${options}</select>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+        <button class="btn creux mini" id="btn-modele">Télécharger le modèle</button>
+      </div>
+      <div class="champ">
+        <label for="imp-fichier">Fichier CSV</label>
+        <input type="file" id="imp-fichier" accept=".csv,text/csv">
+      </div>
+      <button class="btn" id="btn-importer">Importer</button>
+      <div id="rapport"></div>
+    </div>
+
+    <div class="bloc-titre" style="margin-top:30px"><h2>Ce qu'il faut savoir</h2></div>
+    <div class="liste" style="padding:16px">
+      <p style="margin:0 0 10px"><b>Fournisseurs</b> : l'import met à jour les fiches existantes en se basant sur le code.
+      Réimporter un fichier corrigé ne crée pas de doublon.</p>
+      <p style="margin:0 0 10px"><b>Tarifs, conditions, journal</b> : chaque import ajoute des lignes.
+      Importer deux fois le même fichier créera des doublons.</p>
+      <p style="margin:0"><b>Ordre à respecter</b> : les fournisseurs d'abord, le reste ensuite,
+      car les autres tables se rattachent à eux par le code.</p>
+    </div>`;
+
+  document.querySelectorAll('[data-export]').forEach(b => b.addEventListener('click', () => {
+    const t = b.dataset.export;
+    if(t === 'tout'){
+      telecharger(`sauvegarde_fournisseurs_${horodatage()}.json`,
+        JSON.stringify(D, null, 2), 'application/json');
+    } else {
+      telecharger(`${t}_${horodatage()}.csv`, versCSV(t), 'text/csv;charset=utf-8');
+    }
+    toast('Fichier téléchargé');
+  }));
+
+  $('#btn-modele').addEventListener('click', () => {
+    const t = $('#imp-table').value;
+    telecharger(`modele_${t}.csv`,
+      '\uFEFF' + colonnes(t).map(c => c.l).join(';') + '\n', 'text/csv;charset=utf-8');
+  });
+
+  $('#btn-importer').addEventListener('click', async () => {
+    const f = $('#imp-fichier').files[0];
+    const r = $('#rapport');
+    if(!f){ toast('Choisir un fichier'); return; }
+    r.innerHTML = '<div class="message ok" style="margin-top:16px">Lecture en cours...</div>';
+    try{
+      const res = await importer($('#imp-table').value, await f.text());
+      await charger();
+      const bloc = [];
+      if(res.enregistres)
+        bloc.push(`<div class="message ok">${res.enregistres} ligne${res.enregistres>1?'s':''} enregistrée${res.enregistres>1?'s':''} sur ${res.total}.</div>`);
+      if(res.inconnues?.length)
+        bloc.push(`<div class="message" style="background:#FDF0D4">Colonnes ignorées car non reconnues : ${res.inconnues.map(esc).join(', ')}.</div>`);
+      if(res.erreurs?.length)
+        bloc.push(`<div class="message erreur">${res.erreurs.length} ligne${res.erreurs.length>1?'s':''} rejetée${res.erreurs.length>1?'s':''} :<br>${res.erreurs.slice(0,15).map(esc).join('<br>')}${res.erreurs.length>15?'<br>...':''}</div>`);
+      r.innerHTML = '<div style="margin-top:16px">' + bloc.join('') + '</div>';
+    }catch(e){
+      r.innerHTML = `<div class="message erreur" style="margin-top:16px">Import impossible : ${esc(e.message)}</div>`;
+    }
+  });
 }
 
 /* =====================================================================
