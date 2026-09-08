@@ -625,12 +625,28 @@ function dessinerFournisseurs(){
   brancherLignes('#liste-fournisseurs');
 }
 
+// États qui traduisent une attente, par opposition à un dossier abouti.
+const ETATS_ATTENTE = ['NON TRAITE','A FAIRE','A SAISIR','ATT FRS TARIFS','ATT BAN','EN ATT MARION'];
+
 function vueActions(){
   const ouvertes = D.journal.filter(j => j.statut === 'À faire')
     .sort((a,b) => (a.echeance||'9999').localeCompare(b.echeance||'9999'));
+  const noms = Object.fromEntries(D.fournisseurs.map(f => [f.id, f]));
   $('#vue-actions').innerHTML = `
     <div class="bloc-titre">
-      <h2>Actions ouvertes</h2>
+      <h2>Tarifs par état</h2>
+      <span class="compte" id="compte-etat"></span>
+      <span style="flex:1"></span>
+      <select id="f-etat" style="padding:8px 10px;border:1px solid var(--trait);border-radius:3px">
+        <option value="_attente">Tous les états en attente</option>
+        ${ETATS.map(e => `<option value="${esc(e)}">${esc(e)}</option>`).join('')}
+        <option value="_vide">État non renseigné</option>
+      </select>
+    </div>
+    <div id="liste-etat"></div>
+
+    <div class="bloc-titre" style="margin-top:30px">
+      <h2>Notes et relances à traiter</h2>
       <span class="compte">${ouvertes.length}</span>
       <span style="flex:1"></span>
       <button class="btn" id="btn-note">Ajouter une note</button>
@@ -644,7 +660,34 @@ function vueActions(){
         <td>${esc(j.suite||'')}</td>
         <td><button class="btn mini creux" data-fait="${j.id}">Marquer fait</button></td>
       </tr>`).join('')}</tbody></table>`
-      : `<div class="vide">Aucune action en attente.</div>`}`;
+      : `<div class="vide">Aucune note en attente.</div>`}`;
+
+  function dessinerEtat(){
+    const choix = $('#f-etat').value;
+    const sel = D.tarifs.filter(t =>
+        choix === '_attente' ? ETATS_ATTENTE.includes(t.etat)
+      : choix === '_vide'    ? !t.etat
+      : t.etat === choix)
+      .filter(t => noms[t.fournisseur_id])
+      .sort((a,b) => b.date_application.localeCompare(a.date_application));
+    $('#compte-etat').textContent = sel.length + (sel.length > 1 ? ' tarifs' : ' tarif');
+    $('#liste-etat').innerHTML = sel.length
+      ? `<table><thead><tr><th>Application</th><th>Fournisseur</th><th>État</th>
+           <th>MAJ SAP</th><th>Diffusion</th></tr></thead><tbody>
+         ${sel.map(t => `<tr style="cursor:pointer" data-id="${noms[t.fournisseur_id].id}">
+            <td>${fr(t.date_application)}</td>
+            <td>${esc(noms[t.fournisseur_id].raison_sociale)}</td>
+            <td>${esc(t.etat || '-')}</td>
+            <td>${t.maj_sap ? fr(t.maj_sap) : '-'}</td>
+            <td>${esc(t.diffusion || 'non diffusé')}</td>
+          </tr>`).join('')}</tbody></table>`
+      : `<div class="vide">Aucun tarif dans cet état.</div>`;
+    document.querySelectorAll('#liste-etat tr[data-id]').forEach(el =>
+      el.addEventListener('click', () => ouvrirFiche(el.dataset.id)));
+  }
+  $('#f-etat').addEventListener('change', dessinerEtat);
+  dessinerEtat();
+
   $('#btn-note').addEventListener('click', () => formulaire({
     titre:'Nouvelle note', table:'journal', apres:vueActions,
     champs:[{k:'fournisseur_id', l:'Fournisseur', t:'select',
