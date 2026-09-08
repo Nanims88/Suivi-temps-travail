@@ -155,6 +155,11 @@ section.bloc{margin-bottom:30px}
 .etiq.venir{background:#FDF0D4;color:#8A5D00}
 .etiq.perime{background:#EEF1F0;color:var(--encre-doux)}
 .etiq.faire{background:#FBEFED;color:var(--retard)}
+.etiq.e-fait{background:#E4F2EE;color:var(--abysse)}
+.etiq.e-neutre{background:#EEF1F0;color:var(--encre-doux)}
+.etiq.e-afaire{background:#FBE3DF;color:var(--retard);font-weight:700}
+.etiq.e-attente{background:#FDF0D4;color:#8A5D00}
+.etiq.e-vide{background:none;color:var(--encre-doux);border:1px dashed var(--trait)}
 
 table{width:100%;border-collapse:collapse;background:var(--surface);
   border:1px solid var(--trait);border-radius:3px}
@@ -468,7 +473,7 @@ function aTraiter(){
 // Résumé lisible du circuit de traitement d'une version tarifaire.
 function circuit(v){
   const etapes = [];
-  if(v.etat) etapes.push('État : ' + esc(v.etat));
+  etapes.push(etiqEtat(v.etat));
   if(v.envoi_resp)  etapes.push('envoi resp. ' + fr(v.envoi_resp));
   if(v.retour_resp) etapes.push('retour ' + fr(v.retour_resp));
   if(v.maj_sap){
@@ -545,7 +550,7 @@ function vueAlertes(){
         <div class="principal">
           <div class="nom">${esc(t.frs.raison_sociale)}</div>
           <div class="meta">Applicable le ${t.debut.toLocaleDateString('fr-FR')}
-            · ${esc(t.etat || 'état non renseigné')}
+            ${etiqEtat(t.etat)}
             ${t.maj_sap ? ' · SAP le '+fr(t.maj_sap) : ' · pas encore saisi dans SAP'}</div>
         </div>
         <div class="verdict ${tard?'retard':'surveiller'}">
@@ -625,6 +630,17 @@ function dessinerFournisseurs(){
   brancherLignes('#liste-fournisseurs');
 }
 
+// Familles d'états, pour la lecture visuelle.
+const ETAT_FAMILLE = {
+  'SAISI':'e-fait',
+  'PAS DE MODIF':'e-neutre', 'NE PAS SAISIR':'e-neutre',
+  'NON TRAITE':'e-afaire', 'A FAIRE':'e-afaire', 'A SAISIR':'e-afaire',
+  'ATT FRS TARIFS':'e-attente', 'ATT BAN':'e-attente', 'EN ATT MARION':'e-attente',
+};
+const etiqEtat = e => e
+  ? `<span class="etiq ${ETAT_FAMILLE[e] || 'e-neutre'}">${esc(e)}</span>`
+  : '<span class="etiq e-vide">non renseigné</span>';
+
 // États qui traduisent une attente, par opposition à un dossier abouti.
 const ETATS_ATTENTE = ['NON TRAITE','A FAIRE','A SAISIR','ATT FRS TARIFS','ATT BAN','EN ATT MARION'];
 
@@ -677,7 +693,7 @@ function vueActions(){
          ${sel.map(t => `<tr style="cursor:pointer" data-id="${noms[t.fournisseur_id].id}">
             <td>${fr(t.date_application)}</td>
             <td>${esc(noms[t.fournisseur_id].raison_sociale)}</td>
-            <td>${esc(t.etat || '-')}</td>
+            <td>${etiqEtat(t.etat)}</td>
             <td>${t.maj_sap ? fr(t.maj_sap) : '-'}</td>
             <td>${esc(t.diffusion || 'non diffusé')}</td>
           </tr>`).join('')}</tbody></table>`
