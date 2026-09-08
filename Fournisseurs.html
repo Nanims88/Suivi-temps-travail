@@ -86,6 +86,7 @@ textarea:focus-visible,a:focus-visible{outline:2px solid var(--orange);outline-o
 .compteur.retard .n{color:var(--retard)}
 .compteur.surveiller{border-left:4px solid var(--orange)}
 .compteur.actions{border-left:4px solid var(--turquoise)}
+.compteur.diffusion{border-left:4px solid var(--abysse)}
 
 /* ---------- listes ---------- */
 .bloc-titre{
@@ -273,7 +274,10 @@ const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
    ===================================================================== */
 const TYPES        = ['National','Régional','Mixte'];
 const SOURCES      = ['BAN Teract','PDF','Excel','Papier','Autre'];
-const FLUX         = ['Direct magasin','Plateforme SICAAP','Dépôt','Mixte'];
+const FLUX         = ['STOCKE','AG','STOCKE/AG','DIRECT'];
+const ETATS        = ['SAISI','PAS DE MODIF','NON TRAITE','A FAIRE','A SAISIR','NE PAS SAISIR',
+                      'ATT FRS TARIFS','ATT BAN','EN ATT MARION'];
+const DIFFUSIONS   = ['DIFFUSÉ','DIFFUSÉ AVEC MAJ G','NE PAS DIFFUSER'];
 const MODES        = ['Échéance prévisible','Surveillance ancienneté'];
 const STATUTS      = ['Actif','En veille','Clos'];
 const CONDITIONS_T = ['Remise sur facture','RFA','Franco','Escompte','Promotion','Autre'];
@@ -304,10 +308,22 @@ const CHAMPS_FOURNISSEUR = [
 
 const CHAMPS_TARIF = [
   {k:'reference',       l:'Référence de la version', t:'text', aide:'Par exemple : Tarif 2026, ou Avenant mars 2026.'},
-  {k:'date_application',l:'Date d\'application', t:'date', req:true},
+  {k:'date_application',l:'Date d\'application', t:'date', req:true,
+   aide:'Date à laquelle le tarif fournisseur prend effet.'},
   {k:'date_reception',  l:'Date de réception', t:'date'},
+  {k:'fin_annoncee',    l:'Fin de validité annoncée', t:'date',
+   aide:'Terme communiqué par le fournisseur. Indicatif : la fin réelle reste déduite de la version suivante.'},
   {k:'source',          l:'Source', t:'select', o:SOURCES},
-  {k:'evolution',       l:'Évolution moyenne (%)', t:'number', aide:'Saisir 3.2 pour une hausse de 3,2 %.'},
+  {k:'etat',            l:'État', t:'select', o:ETATS},
+  {k:'evolution',       l:'Évolution moyenne achat (%)', t:'number', aide:'Saisir 3.2 pour une hausse de 3,2 %.'},
+  {k:'evolution_pc',    l:'Évolution moyenne PC (%)', t:'number'},
+  {k:'evolution_pvgc',  l:'Évolution moyenne PVGC (%)', t:'number'},
+  {k:'envoi_resp',      l:'Envoi responsable', t:'date'},
+  {k:'retour_resp',     l:'Retour responsable', t:'date'},
+  {k:'maj_sap',         l:'MAJ SAP', t:'date'},
+  {k:'diffusion',       l:'Diffusion', t:'select', o:DIFFUSIONS},
+  {k:'date_diffusion',  l:'Date de diffusion', t:'date'},
+  {k:'specificites',    l:'Spécificités', t:'text'},
   {k:'lien',            l:'Lien vers le document', t:'text'},
   {k:'commentaire',     l:'Commentaire', t:'textarea'},
 ];
@@ -417,6 +433,47 @@ function situation(f){
 
 const RANG = {retard:0, surveiller:1, 'sans-tarif':2, 'sans-echeance':3, ok:4};
 
+// Un tarif est à traiter s'il s'applique bientôt ou déjà et n'a pas été diffusé.
+const HORS_CIRCUIT = ['NE PAS SAISIR','PAS DE MODIF'];
+function aTraiter(){
+  const limite = new Date(AUJ().getTime() + 15*86400000);
+  const noms = Object.fromEntries(D.fournisseurs.map(f => [f.id, f]));
+  return D.tarifs
+    .filter(t => {
+      const d0 = jour(t.date_application);
+      if(!d0 || d0 > limite) return false;
+      if(t.diffusion) return false;
+      if(HORS_CIRCUIT.includes(t.etat)) return false;
+      return true;
+    })
+    .map(t => ({...t, debut:jour(t.date_application), frs:noms[t.fournisseur_id]}))
+    .filter(t => t.frs)
+    .sort((a,b) => a.debut - b.debut);
+}
+
+// Résumé lisible du circuit de traitement d'une version tarifaire.
+function circuit(v){
+  const etapes = [];
+  if(v.etat) etapes.push('État : ' + esc(v.etat));
+  if(v.envoi_resp)  etapes.push('envoi resp. ' + fr(v.envoi_resp));
+  if(v.retour_resp) etapes.push('retour ' + fr(v.retour_resp));
+  if(v.maj_sap){
+    const j = delaiSAP(v);
+    etapes.push('SAP ' + fr(v.maj_sap) + (j === null ? '' :
+      j < 0 ? ` (${Math.abs(j)} j d'avance)` : j === 0 ? ' (le jour même)' : ` (${j} j de retard)`));
+  }
+  etapes.push(v.diffusion
+    ? esc(v.diffusion) + (v.date_diffusion ? ' le ' + fr(v.date_diffusion) : '')
+    : '<b>non diffusé</b>');
+  return etapes.join(' · ');
+}
+
+// Délai entre l'application du tarif et sa saisie dans SAP. Négatif = saisi en avance.
+function delaiSAP(t){
+  const a = jour(t.date_application), b = jour(t.maj_sap);
+  return (a && b) ? Math.round((b - a)/86400000) : null;
+}
+
 function situations(){
   return D.fournisseurs
     .filter(f => f.statut !== 'Clos')
@@ -445,21 +502,44 @@ function vueAlertes(){
   const s = situations();
   const n = niv => s.filter(x => x.niveau === niv).length;
   const aFaire = D.journal.filter(j => j.statut === 'À faire').length;
-  const aTraiter = s.filter(x => ['retard','surveiller','sans-tarif'].includes(x.niveau));
+  const diff = aTraiter();
+  const aRelancer = s.filter(x => ['retard','surveiller','sans-tarif'].includes(x.niveau));
 
   $('#vue-alertes').innerHTML = `
     <div class="compteurs">
       <div class="compteur retard"><span class="n">${n('retard')}</span><span class="l">tarifs en retard</span></div>
       <div class="compteur surveiller"><span class="n">${n('surveiller')}</span><span class="l">échéances sous 30 jours</span></div>
       <div class="compteur"><span class="n">${n('sans-tarif')}</span><span class="l">sans tarif enregistré</span></div>
+      <div class="compteur diffusion"><span class="n">${diff.length}</span><span class="l">tarifs à diffuser</span></div>
       <div class="compteur actions"><span class="n">${aFaire}</span><span class="l">actions ouvertes</span></div>
     </div>
     <div class="bloc-titre">
       <h2>Ce qui demande une relance</h2>
-      <span class="compte">${aTraiter.length} fournisseur${aTraiter.length>1?'s':''}</span>
+      <span class="compte">${aRelancer.length} fournisseur${aRelancer.length>1?'s':''}</span>
     </div>
-    ${aTraiter.length ? `<div class="liste">${aTraiter.map(ligne).join('')}</div>`
-      : `<div class="vide">Rien à relancer aujourd'hui. Les prochaines échéances apparaîtront ici trente jours avant leur date.</div>`}`;
+    ${aRelancer.length ? `<div class="liste">${aRelancer.map(ligne).join('')}</div>`
+      : `<div class="vide">Rien à relancer aujourd'hui. Les prochaines échéances apparaîtront ici trente jours avant leur date.</div>`}
+
+    <div class="bloc-titre" style="margin-top:30px">
+      <h2>Tarifs reçus, pas encore diffusés</h2>
+      <span class="compte">${diff.length}</span>
+    </div>
+    ${diff.length ? `<div class="liste">${diff.map(t => {
+      const j = Math.round((AUJ() - t.debut)/86400000);
+      const tard = j > 0;
+      return `<div class="ligne ${tard?'retard':'surveiller'}" data-id="${t.frs.id}">
+        <div class="principal">
+          <div class="nom">${esc(t.frs.raison_sociale)}</div>
+          <div class="meta">Applicable le ${t.debut.toLocaleDateString('fr-FR')}
+            · ${esc(t.etat || 'état non renseigné')}
+            ${t.maj_sap ? ' · SAP le '+fr(t.maj_sap) : ' · pas encore saisi dans SAP'}</div>
+        </div>
+        <div class="verdict ${tard?'retard':'surveiller'}">
+          <strong>${tard ? 'Applicable depuis '+j+' j' : 'Dans '+Math.abs(j)+' j'}</strong>
+          non diffusé
+        </div>
+      </div>`;}).join('')}</div>`
+      : `<div class="vide">Aucun tarif en attente de diffusion.</div>`}`;
   brancherLignes('#vue-alertes');
 }
 
@@ -611,6 +691,11 @@ function dessinerFiche(){
             ${v.fin ? ` · jusqu'au ${v.fin.toLocaleDateString('fr-FR')}` : ''}</div>
           <div class="note">Reçu le ${fr(v.date_reception)}${v.source?' · '+esc(v.source):''}
             ${v.lien ? ` · <a href="${esc(v.lien)}" target="_blank" rel="noopener">document</a>` : ''}
+            ${v.fin_annoncee ? `<br>Fin annoncée par le fournisseur : ${fr(v.fin_annoncee)}` : ''}
+            ${(v.evolution_pc!=null || v.evolution_pvgc!=null)
+              ? `<br>PC ${v.evolution_pc!=null?v.evolution_pc+' %':'-'} · PVGC ${v.evolution_pvgc!=null?v.evolution_pvgc+' %':'-'}` : ''}
+            <br>${circuit(v)}
+            ${v.specificites ? '<br>'+esc(v.specificites) : ''}
             ${v.commentaire ? '<br>'+esc(v.commentaire) : ''}
             <button class="btn mini creux" data-del-tarif="${v.id}" style="margin-left:6px">Supprimer</button></div>
         </div>`).join('')}</div>`
