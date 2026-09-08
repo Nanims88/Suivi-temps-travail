@@ -453,7 +453,7 @@ function situation(f){
 const RANG = {retard:0, surveiller:1, 'sans-tarif':2, 'sans-echeance':3, ok:4};
 
 // Un tarif est à traiter s'il s'applique bientôt ou déjà et n'a pas été diffusé.
-const HORS_CIRCUIT = ['NE PAS SAISIR','PAS DE MODIF'];
+const HORS_CIRCUIT = ['NE PAS SAISIR','PAS DE MODIF','NON TRAITE'];
 function aTraiter(){
   const limite = new Date(AUJ().getTime() + 15*86400000);
   const noms = Object.fromEntries(D.fournisseurs.map(f => [f.id, f]));
@@ -633,8 +633,8 @@ function dessinerFournisseurs(){
 // Familles d'états, pour la lecture visuelle.
 const ETAT_FAMILLE = {
   'SAISI':'e-fait',
-  'PAS DE MODIF':'e-neutre', 'NE PAS SAISIR':'e-neutre',
-  'NON TRAITE':'e-afaire', 'A FAIRE':'e-afaire', 'A SAISIR':'e-afaire',
+  'PAS DE MODIF':'e-neutre', 'NE PAS SAISIR':'e-neutre', 'NON TRAITE':'e-neutre',
+  'A FAIRE':'e-afaire', 'A SAISIR':'e-afaire',
   'ATT FRS TARIFS':'e-attente', 'ATT BAN':'e-attente', 'EN ATT MARION':'e-attente',
 };
 const etiqEtat = e => e
@@ -642,7 +642,7 @@ const etiqEtat = e => e
   : '<span class="etiq e-vide">non renseigné</span>';
 
 // États qui traduisent une attente, par opposition à un dossier abouti.
-const ETATS_ATTENTE = ['NON TRAITE','A FAIRE','A SAISIR','ATT FRS TARIFS','ATT BAN','EN ATT MARION'];
+const ETATS_ATTENTE = ['A FAIRE','A SAISIR','ATT FRS TARIFS','ATT BAN','EN ATT MARION'];
 
 function vueActions(){
   const ouvertes = D.journal.filter(j => j.statut === 'À faire')
