@@ -686,6 +686,7 @@ function dessinerFiche(){
         <button class="btn mini creux" data-add="condition">Ajouter une condition</button>
         <button class="btn mini creux" data-add="note">Ajouter une note</button>
         <button class="btn mini creux" id="modifier">Modifier la fiche</button>
+        <button class="btn mini creux" id="fusionner">Fusionner</button>
         <button class="btn mini danger" id="supprimer">Supprimer</button>
       </div>
     </div>
@@ -751,6 +752,7 @@ function dessinerFiche(){
   $('#modifier').addEventListener('click', () => formulaire({
     titre:'Modifier la fiche', champs:CHAMPS_FOURNISSEUR, table:'fournisseurs',
     valeurs:f, id:f.id, apres:dessinerFiche}));
+  $('#fusionner').addEventListener('click', () => fusionner(f));
   $('#supprimer').addEventListener('click', async () => {
     if(!confirm(`Supprimer ${f.raison_sociale} ainsi que ses tarifs, conditions et notes ?`)) return;
     await db.from('fournisseurs').delete().eq('id', f.id);
@@ -1014,6 +1016,58 @@ function vueDonnees(){
   });
 }
 
+/* ---------- fusion de deux fiches ---------- */
+// Rattache tarifs, conditions et journal à la fiche cible, puis supprime la source.
+async function fusionner(source){
+  const autres = D.fournisseurs.filter(f => f.id !== source.id)
+    .sort((a,b) => a.raison_sociale.localeCompare(b.raison_sociale));
+  if(!autres.length){ toast('Aucune autre fiche disponible'); return; }
+
+  $('#modal-titre').textContent = 'Fusionner ' + source.raison_sociale;
+  $('#modal-corps').innerHTML = `
+    <p style="margin:0 0 16px">Tous les tarifs, conditions et échanges de
+      <b>${esc(source.raison_sociale)}</b> (${esc(source.code)}) seront rattachés à la fiche choisie.
+      Cette fiche sera ensuite supprimée.</p>
+    <div class="champ">
+      <label for="cible">Fiche à conserver</label>
+      <select id="cible">
+        <option value="">-</option>
+        ${autres.map(f => `<option value="${f.id}">${esc(f.raison_sociale)} (${esc(f.code)})</option>`).join('')}
+      </select>
+      <div class="aide">Les compteurs de la fiche conservée sont recalculés après la fusion.</div>
+    </div>
+    <div class="message erreur">Opération irréversible. Faites d'abord une sauvegarde
+      depuis l'onglet Données si vous avez un doute.</div>`;
+
+  const b = $('#modal-valider');
+  b.replaceWith(b.cloneNode(true));
+  $('#modal-valider').textContent = 'Fusionner';
+  $('#modal-valider').addEventListener('click', async () => {
+    const cible = $('#cible').value;
+    if(!cible){ toast('Choisir la fiche à conserver'); return; }
+    const nom = D.fournisseurs.find(f => f.id === cible).raison_sociale;
+    if(!confirm(`Rattacher tout l'historique de ${source.raison_sociale} à ${nom}, `
+      + `puis supprimer ${source.raison_sociale} ?`)) return;
+    try{
+      for(const t of ['tarifs','conditions','journal']){
+        const r = await db.from(t).update({fournisseur_id:cible}).eq('fournisseur_id', source.id);
+        if(r.error) throw r.error;
+      }
+      const r = await db.from('fournisseurs').delete().eq('id', source.id);
+      if(r.error) throw r.error;
+      await charger();
+      $('#modal').close();
+      $('#modal-valider').textContent = 'Enregistrer';
+      toast('Fusion effectuée');
+      ficheOuverte = cible;
+      dessinerFiche();
+    }catch(e){
+      toast('Fusion impossible : ' + e.message);
+    }
+  });
+  $('#modal').showModal();
+}
+
 /* =====================================================================
    7. Formulaire générique
    ===================================================================== */
@@ -1057,6 +1111,7 @@ function formulaire({titre, champs, table, valeurs={}, id=null, fixe={}, apres})
   };
   const bouton = $('#modal-valider');
   bouton.replaceWith(bouton.cloneNode(true));
+  $('#modal-valider').textContent = 'Enregistrer';
   $('#modal-valider').addEventListener('click', valider);
   $('#modal').showModal();
 }
