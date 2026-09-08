@@ -277,7 +277,7 @@ const SOURCES      = ['BAN Teract','PDF','Excel','Papier','Autre'];
 const FLUX         = ['STOCKE','AG','STOCKE/AG','DIRECT'];
 const ETATS        = ['SAISI','PAS DE MODIF','NON TRAITE','A FAIRE','A SAISIR','NE PAS SAISIR',
                       'ATT FRS TARIFS','ATT BAN','EN ATT MARION'];
-const DIFFUSIONS   = ['DIFFUSÉ','DIFFUSÉ AVEC MAJ G','NE PAS DIFFUSER'];
+const DIFFUSIONS   = ['DIFFUSÉ','DIFFUSÉ AVEC MAJ G','NE PAS DIFFUSER','CLÔTURÉ SANS INFO'];
 const MODES        = ['Échéance prévisible','Surveillance ancienneté'];
 const STATUTS      = ['Actif','En veille','Clos'];
 const CONDITIONS_T = ['Remise sur facture','RFA','Franco','Escompte','Promotion','Autre'];
@@ -538,9 +538,19 @@ function vueAlertes(){
           <strong>${tard ? 'Applicable depuis '+j+' j' : 'Dans '+Math.abs(j)+' j'}</strong>
           non diffusé
         </div>
+        <button class="btn mini creux" data-cloturer="${t.id}"
+                title="Sortir de la liste sans affirmer que le tarif a été diffusé">Clôturer</button>
       </div>`;}).join('')}</div>`
       : `<div class="vide">Aucun tarif en attente de diffusion.</div>`}`;
   brancherLignes('#vue-alertes');
+  document.querySelectorAll('[data-cloturer]').forEach(b =>
+    b.addEventListener('click', async e => {
+      e.stopPropagation();
+      if(!confirm('Clôturer ce tarif sans information de diffusion ?\n\n'
+        + "Il sortira de la liste. L'état et l'historique sont conservés.")) return;
+      await enregistrer('tarifs', {diffusion:'CLÔTURÉ SANS INFO'}, b.dataset.cloturer);
+      await charger(); toast('Tarif clôturé'); vueAlertes();
+    }));
 }
 
 function ligne(x){
