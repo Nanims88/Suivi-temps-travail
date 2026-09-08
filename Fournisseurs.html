@@ -283,7 +283,7 @@ const FLUX         = ['STOCKE','AG','STOCKE/AG','DIRECT'];
 const ETATS        = ['SAISI','PAS DE MODIF','NON TRAITE','A FAIRE','A SAISIR','NE PAS SAISIR',
                       'ATT FRS TARIFS','ATT BAN','EN ATT MARION'];
 const DIFFUSIONS   = ['DIFFUSÉ','DIFFUSÉ AVEC MAJ G','NE PAS DIFFUSER','CLÔTURÉ SANS INFO'];
-const MODES        = ['Échéance prévisible','Surveillance ancienneté'];
+const MODES        = ['Échéance prévisible','Surveillance ancienneté','Sans surveillance'];
 const STATUTS      = ['Actif','En veille','Clos'];
 const CONDITIONS_T = ['Remise sur facture','RFA','Franco','Escompte','Promotion','Autre'];
 const EVENEMENTS   = ['Réception tarif','Relance','Négociation','Litige','Note','Décision'];
@@ -298,9 +298,11 @@ const CHAMPS_FOURNISSEUR = [
   {k:'flux_logistique', l:'Flux logistique', t:'select', o:FLUX},
   {k:'famille',         l:'Famille ou activité', t:'text'},
   {k:'mode_suivi',      l:'Mode de suivi', t:'select', o:MODES,
-   aide:'Échéance prévisible : vous saisissez la date de révision. Surveillance ancienneté : elle est calculée depuis le dernier tarif reçu.'},
+   aide:'Échéance prévisible : vous saisissez la date de révision. Surveillance ancienneté : elle est calculée depuis le dernier tarif ou la dernière vérification. Sans surveillance : aucune alerte, pour les fournisseurs dormants.'},
   {k:'periodicite_mois',l:'Périodicité attendue (mois)', t:'number'},
   {k:'prochaine_revision', l:'Prochaine révision attendue', t:'date'},
+  {k:'verifie_le',      l:'Dernière vérification', t:'date',
+   aide:'Constat que le tarif est toujours d\'actualité. Repousse l\'échéance au même titre qu\'un nouveau tarif.'},
   {k:'contact',         l:'Contact commercial', t:'text'},
   {k:'email',           l:'Email', t:'email'},
   {k:'telephone',       l:'Téléphone', t:'text'},
@@ -431,15 +433,24 @@ function versions(fid){
 function situation(f){
   const v = versions(f.id);
   const enCours = [...v].reverse().find(x => x.debut <= AUJ()) || null;
+  const verifie = jour(f.verifie_le);
+
+  if(f.mode_suivi === 'Sans surveillance')
+    return {f, versions:v, enCours, verifie, echeance:null, jours:null,
+            niveau:'hors-suivi', verdict:'Hors surveillance'};
+
   let echeance = null;
   if(f.mode_suivi === 'Échéance prévisible'){
     echeance = jour(f.prochaine_revision);
-  } else if(enCours && f.periodicite_mois){
-    echeance = moisPlus(enCours.debut, f.periodicite_mois);
+  } else if(f.periodicite_mois){
+    // Le compteur repart du plus récent des deux : nouveau tarif ou vérification.
+    const repere = [enCours ? enCours.debut : null, verifie]
+      .filter(Boolean).sort((a,b) => b - a)[0];
+    if(repere) echeance = moisPlus(repere, f.periodicite_mois);
   }
   const jours = echeance ? ecart(echeance) : null;
   let niveau = 'ok', verdict = 'À jour';
-  if(!enCours){
+  if(!enCours && !verifie){
     niveau = 'sans-tarif'; verdict = 'Aucun tarif enregistré';
   } else if(echeance === null){
     niveau = 'sans-echeance'; verdict = 'Pas d\'échéance définie';
@@ -453,7 +464,7 @@ function situation(f){
   return {f, versions:v, enCours, echeance, jours, niveau, verdict};
 }
 
-const RANG = {retard:0, surveiller:1, 'sans-tarif':2, 'sans-echeance':3, ok:4};
+const RANG = {retard:0, surveiller:1, 'sans-tarif':2, 'sans-echeance':3, ok:4, 'hors-suivi':5};
 
 // Un tarif est à traiter s'il s'applique bientôt ou déjà et n'a pas été diffusé.
 const HORS_CIRCUIT = ['NE PAS SAISIR','PAS DE MODIF','NON TRAITE'];
@@ -539,7 +550,7 @@ function vueAlertes(){
       <h2>Ce qui demande une relance</h2>
       <span class="compte">${aRelancer.length} fournisseur${aRelancer.length>1?'s':''}</span>
     </div>
-    ${aRelancer.length ? `<div class="liste">${aRelancer.map(ligne).join('')}</div>`
+    ${aRelancer.length ? `<div class="liste">${aRelancer.map(x => ligne(x, true)).join('')}</div>`
       : `<div class="vide">Rien à relancer aujourd'hui. Les prochaines échéances apparaîtront ici trente jours avant leur date.</div>`}
 
     <div class="bloc-titre" style="margin-top:30px">
@@ -565,6 +576,12 @@ function vueAlertes(){
       </div>`;}).join('')}</div>`
       : `<div class="vide">Aucun tarif en attente de diffusion.</div>`}`;
   brancherLignes('#vue-alertes');
+  document.querySelectorAll('[data-verifie]').forEach(b =>
+    b.addEventListener('click', async e => {
+      e.stopPropagation();
+      const f = D.fournisseurs.find(x => x.id === b.dataset.verifie);
+      if(await marquerVerifie(f)) vueAlertes();
+    }));
   document.querySelectorAll('[data-cloturer]').forEach(b =>
     b.addEventListener('click', async e => {
       e.stopPropagation();
@@ -575,7 +592,7 @@ function vueAlertes(){
     }));
 }
 
-function ligne(x){
+function ligne(x, options){
   const dernier = x.enCours ? `Tarif du ${x.enCours.debut.toLocaleDateString('fr-FR')}` : 'Jamais de tarif reçu';
   return `<div class="ligne ${x.niveau}" data-id="${x.f.id}">
     <div class="principal">
@@ -586,6 +603,8 @@ function ligne(x){
       <strong>${esc(x.verdict)}</strong>
       ${x.echeance ? 'échéance au '+x.echeance.toLocaleDateString('fr-FR') : esc(x.f.mode_suivi||'')}
     </div>
+    ${options ? `<button class="btn mini creux" data-verifie="${x.f.id}"
+        title="Aucun nouveau tarif, le tarif en place reste valable">Vérifié</button>` : ''}
   </div>`;
 }
 
@@ -748,6 +767,7 @@ function dessinerFiche(){
       <div class="infos">
         ${info('Mode de suivi', f.mode_suivi)}
         ${info('Prochaine échéance', s.echeance ? s.echeance.toLocaleDateString('fr-FR') : 'non définie')}
+        ${info('Dernière vérification', f.verifie_le ? fr(f.verifie_le) : null)}
         ${info('Tarif en vigueur depuis', s.enCours ? s.enCours.debut.toLocaleDateString('fr-FR') : 'aucun')}
         ${info('Flux logistique', f.flux_logistique)}
         ${info('Source du tarif', f.source_tarif)}
@@ -764,6 +784,7 @@ function dessinerFiche(){
         <button class="btn mini" data-add="tarif">Enregistrer un tarif</button>
         <button class="btn mini creux" data-add="condition">Ajouter une condition</button>
         <button class="btn mini creux" data-add="note">Ajouter une note</button>
+        <button class="btn mini creux" id="verifie">Tarif vérifié, sans changement</button>
         <button class="btn mini creux" id="modifier">Modifier la fiche</button>
         <button class="btn mini creux" id="fusionner">Fusionner</button>
         <button class="btn mini danger" id="supprimer">Supprimer</button>
@@ -834,6 +855,9 @@ function dessinerFiche(){
   $('#modifier').addEventListener('click', () => formulaire({
     titre:'Modifier la fiche', champs:CHAMPS_FOURNISSEUR, table:'fournisseurs',
     valeurs:f, id:f.id, apres:dessinerFiche}));
+  $('#verifie').addEventListener('click', async () => {
+    if(await marquerVerifie(f)) dessinerFiche();
+  });
   $('#fusionner').addEventListener('click', () => fusionner(f));
   $('#supprimer').addEventListener('click', async () => {
     if(!confirm(`Supprimer ${f.raison_sociale} ainsi que ses tarifs, conditions et notes ?`)) return;
@@ -1106,6 +1130,29 @@ function vueDonnees(){
       r.innerHTML = `<div class="message erreur" style="margin-top:16px">Import impossible : ${esc(e.message)}</div>`;
     }
   });
+}
+
+/* ---------- vérification sans changement ---------- */
+// Repousse l'échéance sans créer de fausse version tarifaire, et laisse une trace datée.
+async function marquerVerifie(f){
+  if(!confirm(`Confirmer que le tarif de ${f.raison_sociale} est toujours d'actualité ?\n\n`
+    + "L'échéance repart pour " + (f.periodicite_mois || 12) + " mois et la vérification est tracée dans l'historique."))
+    return false;
+  try{
+    const aujourdhui = iso(AUJ());
+    await enregistrer('fournisseurs', {verifie_le:aujourdhui}, f.id);
+    await enregistrer('journal', {
+      fournisseur_id:f.id, date:aujourdhui, type_evenement:'Note',
+      objet:'Tarif vérifié, aucun changement',
+      detail:'Vérification menée sans nouveau tarif reçu. Échéance repoussée.',
+      statut:'Fait'}, null);
+    await charger();
+    toast('Vérification enregistrée');
+    return true;
+  }catch(e){
+    toast('Enregistrement impossible : ' + e.message);
+    return false;
+  }
 }
 
 /* ---------- fusion de deux fiches ---------- */
