@@ -722,7 +722,8 @@ function dessinerFiche(){
             <br>${circuit(v)}
             ${v.specificites ? '<br>'+esc(v.specificites) : ''}
             ${v.commentaire ? '<br>'+esc(v.commentaire) : ''}
-            <button class="btn mini creux" data-del-tarif="${v.id}" style="margin-left:6px">Supprimer</button></div>
+            <button class="btn mini creux" data-edit-tarif="${v.id}" style="margin-left:6px">Modifier</button>
+            <button class="btn mini creux" data-del-tarif="${v.id}">Supprimer</button></div>
         </div>`).join('')}</div>`
         : `<div class="vide">Aucune version enregistrée. La première saisie fixe le point de départ de l'historique.</div>`}
     </section>
@@ -738,7 +739,8 @@ function dessinerFiche(){
             <td>${c.valeur!=null ? esc(c.valeur)+' '+esc(c.unite||'') : '-'}</td>
             <td>${fr(c.date_debut)} au ${c.date_fin?fr(c.date_fin):'sans terme'}</td>
             <td>${esc(c.base_calcul||'')}</td>
-            <td><button class="btn mini creux" data-del-cond="${c.id}">Supprimer</button></td>
+            <td><button class="btn mini creux" data-edit-cond="${c.id}">Modifier</button>
+                <button class="btn mini creux" data-del-cond="${c.id}">Supprimer</button></td>
           </tr>`;}).join('')}</tbody></table>`
         : `<div class="vide">Aucune condition enregistrée.</div>`}
     </section>
@@ -756,6 +758,7 @@ function dessinerFiche(){
           </div>
           <div>
             ${j.statut==='À faire' ? `<button class="btn mini creux" data-fait="${j.id}">Marquer fait</button>` : ''}
+            <button class="btn mini creux" data-edit-note="${j.id}">Modifier</button>
             <button class="btn mini creux" data-del-note="${j.id}">Supprimer</button>
           </div>
         </div>`).join('')}</div>`
@@ -784,6 +787,16 @@ function dessinerFiche(){
       valeurs:{fournisseur_id:f.id, date:iso(AUJ()), statut:'À faire'},
       fixe:{fournisseur_id:f.id}, apres:dessinerFiche});
   }));
+
+  const modif = (attr, table, champs, titre) =>
+    document.querySelectorAll('['+attr+']').forEach(b => b.addEventListener('click', () => {
+      const id = b.getAttribute(attr);
+      const enr = D[table].find(x => x.id === id);
+      if(enr) formulaire({titre, champs, table, valeurs:enr, id, apres:dessinerFiche});
+    }));
+  modif('data-edit-tarif','tarifs',     CHAMPS_TARIF,     'Modifier le tarif');
+  modif('data-edit-cond', 'conditions', CHAMPS_CONDITION, 'Modifier la condition');
+  modif('data-edit-note', 'journal',    CHAMPS_JOURNAL,   'Modifier la note');
 
   const suppr = (attr, table, question) =>
     document.querySelectorAll('['+attr+']').forEach(b => b.addEventListener('click', async () => {
