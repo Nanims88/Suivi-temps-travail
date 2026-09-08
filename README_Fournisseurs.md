@@ -94,6 +94,26 @@ Les 56 fiches portant un code commençant par `TMP_` sont volontairement repéra
 
 Pour retrouver ces fiches : onglet **Fournisseurs**, taper `TMP` dans la recherche.
 
+Attention à un cas particulier : si le vrai code ERP est déjà porté par une autre fiche, la saisie sera refusée avec le message « Ce code fournisseur existe déjà ». C'est voulu, le code étant une clé d'unicité. Utiliser alors le bouton **Fusionner**.
+
+### 3.5 Fusionner deux fiches
+
+Le bouton **Fusionner**, sur la fiche à faire disparaître, rattache l'ensemble de ses tarifs, conditions et échanges à la fiche que vous conservez, puis la supprime. L'historique est intégralement repris, rien n'est perdu.
+
+Huit cas sont attendus après la reprise, les mêmes fournisseurs figurant sous deux orthographes trop éloignées pour être rapprochées automatiquement :
+
+| Fiche provisoire | À fusionner vers |
+|---|---|
+| OCELIA | OCEALIA |
+| JEAN LISETTE | JEAN ET LISETTE |
+| GUY COTTEN | ETS GUY COTTEN |
+| DOMAINE DE BEQUIGNOL | DOM DE BEQUIGNOL |
+| SPEAR & JACKSON | SPEAR JACKSON FRANCE |
+| SMART GARDEN PRODUCTS | SMART GARDEN PRODUCTS LIMITED |
+| QUADRIMEX | QUADRIMEX SELS |
+
+Un huitième rapprochement, GRAF DISTRIBUTION vers F1 DISTRIBUTION, est signalé par l'algorithme mais paraît douteux. À vérifier avant toute fusion, l'opération étant irréversible.
+
 ### 3.4 Périodicités
 
 La périodicité de chaque fournisseur a été calculée à partir de la médiane des intervalles réellement observés entre deux versions. Les fournisseurs n'ayant qu'une seule version reçoivent douze mois par défaut, valeur à ajuster au fil de l'eau.
