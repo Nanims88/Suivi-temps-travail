@@ -380,6 +380,9 @@ let D = { fournisseurs:[], tarifs:[], conditions:[], journal:[] };
 let vueCourante = 'alertes';
 let ficheOuverte = null;
 
+// Choix d'affichage conservés d'une vue à l'autre pendant la session.
+const UI = { rech:'', type:'', statut:'', etat:'_attente' };
+
 // Supabase plafonne une lecture à 1000 lignes. On pagine pour tout récupérer.
 async function tout(table, tri, croissant = true){
   const PAGE = 1000;
@@ -601,9 +604,9 @@ function vueFournisseurs(){
       <button class="btn" id="btn-nouveau">Ajouter un fournisseur</button>
     </div>
     <div class="filtres">
-      <input type="search" id="rech" placeholder="Rechercher un nom, un code, une famille">
-      <select id="f-type"><option value="">Tous les types</option>${TYPES.map(t=>`<option>${t}</option>`).join('')}</select>
-      <select id="f-statut"><option value="">Tous les statuts</option>${STATUTS.map(t=>`<option>${t}</option>`).join('')}</select>
+      <input type="search" id="rech" value="${esc(UI.rech)}" placeholder="Rechercher un nom, un code, une famille">
+      <select id="f-type"><option value="">Tous les types</option>${TYPES.map(t=>`<option ${UI.type===t?'selected':''}>${t}</option>`).join('')}</select>
+      <select id="f-statut"><option value="">Tous les statuts</option>${STATUTS.map(t=>`<option ${UI.statut===t?'selected':''}>${t}</option>`).join('')}</select>
     </div>
     <div id="liste-fournisseurs"></div>`;
   $('#btn-nouveau').addEventListener('click', () => formulaire({
@@ -611,14 +614,17 @@ function vueFournisseurs(){
     valeurs:{mode_suivi:'Surveillance ancienneté', periodicite_mois:12, statut:'Actif'},
     apres: vueFournisseurs}));
   ['rech','f-type','f-statut'].forEach(id =>
-    $('#'+id).addEventListener('input', dessinerFournisseurs));
+    $('#'+id).addEventListener('input', () => {
+      UI.rech = $('#rech').value; UI.type = $('#f-type').value; UI.statut = $('#f-statut').value;
+      dessinerFournisseurs();
+    }));
   dessinerFournisseurs();
 }
 
 function dessinerFournisseurs(){
-  const q  = ($('#rech')?.value || '').toLowerCase().trim();
-  const ty = $('#f-type')?.value || '';
-  const st = $('#f-statut')?.value || '';
+  const q  = UI.rech.toLowerCase().trim();
+  const ty = UI.type;
+  const st = UI.statut;
   const l = D.fournisseurs.map(situation).filter(x =>
        (!ty || x.f.type === ty)
     && (!st || x.f.statut === st)
@@ -654,9 +660,9 @@ function vueActions(){
       <span class="compte" id="compte-etat"></span>
       <span style="flex:1"></span>
       <select id="f-etat" style="padding:8px 10px;border:1px solid var(--trait);border-radius:3px">
-        <option value="_attente">Tous les états en attente</option>
-        ${ETATS.map(e => `<option value="${esc(e)}">${esc(e)}</option>`).join('')}
-        <option value="_vide">État non renseigné</option>
+        <option value="_attente" ${UI.etat==='_attente'?'selected':''}>Tous les états en attente</option>
+        ${ETATS.map(e => `<option value="${esc(e)}" ${UI.etat===e?'selected':''}>${esc(e)}</option>`).join('')}
+        <option value="_vide" ${UI.etat==='_vide'?'selected':''}>État non renseigné</option>
       </select>
     </div>
     <div id="liste-etat"></div>
@@ -679,7 +685,7 @@ function vueActions(){
       : `<div class="vide">Aucune note en attente.</div>`}`;
 
   function dessinerEtat(){
-    const choix = $('#f-etat').value;
+    const choix = UI.etat;
     const sel = D.tarifs.filter(t =>
         choix === '_attente' ? ETATS_ATTENTE.includes(t.etat)
       : choix === '_vide'    ? !t.etat
@@ -701,7 +707,7 @@ function vueActions(){
     document.querySelectorAll('#liste-etat tr[data-id]').forEach(el =>
       el.addEventListener('click', () => ouvrirFiche(el.dataset.id)));
   }
-  $('#f-etat').addEventListener('change', dessinerEtat);
+  $('#f-etat').addEventListener('change', () => { UI.etat = $('#f-etat').value; dessinerEtat(); });
   dessinerEtat();
 
   $('#btn-note').addEventListener('click', () => formulaire({
