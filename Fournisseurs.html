@@ -375,15 +375,29 @@ let D = { fournisseurs:[], tarifs:[], conditions:[], journal:[] };
 let vueCourante = 'alertes';
 let ficheOuverte = null;
 
+// Supabase plafonne une lecture à 1000 lignes. On pagine pour tout récupérer.
+async function tout(table, tri, croissant = true){
+  const PAGE = 1000;
+  let lignes = [], depart = 0;
+  for(;;){
+    const r = await db.from(table).select('*')
+      .order(tri, {ascending:croissant})
+      .range(depart, depart + PAGE - 1);
+    if(r.error) throw r.error;
+    lignes = lignes.concat(r.data);
+    if(r.data.length < PAGE) return lignes;
+    depart += PAGE;
+  }
+}
+
 async function charger(){
   const [f,t,c,j] = await Promise.all([
-    db.from('fournisseurs').select('*').order('raison_sociale'),
-    db.from('tarifs').select('*').order('date_application'),
-    db.from('conditions').select('*').order('date_debut'),
-    db.from('journal').select('*').order('date', {ascending:false}),
+    tout('fournisseurs', 'raison_sociale'),
+    tout('tarifs', 'date_application'),
+    tout('conditions', 'date_debut'),
+    tout('journal', 'date', false),
   ]);
-  for(const r of [f,t,c,j]) if(r.error) throw r.error;
-  D = { fournisseurs:f.data, tarifs:t.data, conditions:c.data, journal:j.data };
+  D = { fournisseurs:f, tarifs:t, conditions:c, journal:j };
 }
 
 /* =====================================================================
