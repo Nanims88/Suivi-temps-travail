@@ -377,6 +377,20 @@ const jour = s => { if(!s) return null; const d = new Date(s+'T00:00:00'); retur
 const iso  = d => d ? d.toISOString().slice(0,10) : null;
 const fr   = s => { const d = jour(s); return d ? d.toLocaleDateString('fr-FR') : '-'; };
 const ecart = d => Math.round((d - AUJ())/86400000);
+// La diffusion se fait le lundi. Premier lundi utile après une date donnée.
+function lundiSuivant(d){
+  const r = new Date(d);
+  r.setDate(r.getDate() + (((8 - r.getDay()) % 7) || 7));
+  return r;
+}
+// Nombre de rendez-vous du lundi manqués entre la saisie SAP et la diffusion.
+function cyclesManques(maj, reference){
+  const m = jour(maj), r = reference ? (jour(reference) || reference) : AUJ();
+  if(!m || !r) return null;
+  const cible = lundiSuivant(m);
+  return Math.max(0, Math.ceil((r - cible) / (7 * 86400000)));
+}
+
 const premierJanvierSuivant = () => new Date(AUJ().getFullYear() + 1, 0, 1);
 const moisPlus = (d,n) => { const r = new Date(d); const j = r.getDate();
   r.setMonth(r.getMonth()+Number(n)); if(r.getDate()<j) r.setDate(0); return r; };
@@ -601,11 +615,16 @@ function vueAlertes(){
               ${etiqEtat(t.etat)}
               ${etape === 'saisie'
                 ? ' · pas encore saisi dans SAP'
-                : ' · SAP le ' + fr(t.maj_sap)}</div>
+                : ' · SAP le ' + fr(t.maj_sap)
+                  + ' · diffusion prévue le ' + lundiSuivant(jour(t.maj_sap)).toLocaleDateString('fr-FR')}</div>
           </div>
           <div class="verdict ${tard?'retard':'surveiller'}">
             <strong>${tard ? 'Applicable depuis '+j+' j' : 'Dans '+Math.abs(j)+' j'}</strong>
-            ${etape === 'saisie' ? 'à saisir' : 'non diffusé'}
+            ${etape === 'saisie' ? 'à saisir' : (() => {
+              const rates = cyclesManques(t.maj_sap, null);
+              return rates > 0 ? `${rates} lundi${rates>1?'s':''} manqué${rates>1?'s':''}`
+                               : 'part au prochain lundi';
+            })()}
           </div>
           ${etape === 'saisie'
             ? `<button class="btn mini creux" data-saisi="${t.id}"
@@ -1486,7 +1505,16 @@ function vueBord(){
     <div class="compteurs">
       ${carte(j(mediane(traitement)), 'réception vers SAP', `${traitement.length} tarifs mesurés`)}
       ${carte(j(mediane(arbitrage)), 'envoi vers retour responsable', `${arbitrage.length} allers-retours`)}
-      ${carte(j(mediane(diffusion)), 'SAP vers diffusion', `${diffusion.length} diffusions`)}
+      ${(() => {
+        const cycles = diffuses.map(t => cyclesManques(t.maj_sap, t.date_diffusion))
+          .filter(v => v !== null);
+        const alHeure = cycles.filter(v => v === 0).length;
+        const part = cycles.length ? Math.round(100 * alHeure / cycles.length) : null;
+        return carte(part === null ? '-' : part + ' %', 'diffusés au premier lundi',
+          cycles.length ? `${cycles.length - alHeure} sur ${cycles.length} ont raté un cycle`
+            + ` · délai brut ${j(mediane(diffusion))}` : null,
+          part !== null && part < 80 ? 'surveiller' : 'diffusion');
+      })()}
       ${carte(j(mediane(parRapport)), 'application vers SAP',
         parRapport.length ? `${Math.round(100*enRetard/parRapport.length)} % saisis après application` : null,
         mediane(parRapport) > 0 ? 'retard' : 'surveiller')}
@@ -1512,7 +1540,11 @@ function vueBord(){
 
     <p style="color:var(--encre-doux);margin-top:22px">Les délais ne sont calculés que sur les
       tarifs dont les deux dates sont renseignées. Un délai négatif signale une anticipation,
-      par exemple une saisie SAP effectuée avant la date d'application du tarif.</p>`;
+      par exemple une saisie SAP effectuée avant la date d'application du tarif.<br>
+      La diffusion partant le lundi, le délai brut entre SAP et diffusion dépend surtout du jour
+      de saisie, de 7 jours pour un lundi à 3 jours pour un vendredi. L'indicateur retenu est donc
+      la part des tarifs diffusés au premier lundi utile, qui mesure la tenue du cycle et non le
+      calendrier.</p>`;
 
   $('#periode').addEventListener('change', () => { UI.periode = $('#periode').value; vueBord(); });
   ['p-debut','p-fin'].forEach(id => { if($('#'+id))
