@@ -87,6 +87,10 @@ textarea:focus-visible,a:focus-visible{outline:2px solid var(--orange);outline-o
 .compteur.surveiller{border-left:4px solid var(--orange)}
 .compteur.actions{border-left:4px solid var(--turquoise)}
 .compteur.diffusion{border-left:4px solid var(--abysse)}
+.compteur.demande{border-left:4px solid var(--turquoise)}
+.compteur[data-filtre]{cursor:pointer;transition:none}
+.compteur[data-filtre]:hover{background:#F7FAF9;border-color:var(--turquoise)}
+.compteur.actif{background:#E4F2EE;border-color:var(--abysse);box-shadow:inset 0 0 0 1px var(--abysse)}
 
 /* ---------- listes ---------- */
 .bloc-titre{
@@ -390,7 +394,7 @@ let vueCourante = 'alertes';
 let ficheOuverte = null;
 
 // Choix d'affichage conservés d'une vue à l'autre pendant la session.
-const UI = { rech:'', type:'', statut:'', etat:'_attente' };
+const UI = { rech:'', type:'', statut:'', etat:'_attente', alerte:null };
 
 // Supabase plafonne une lecture à 1000 lignes. On pagine pour tout récupérer.
 async function tout(table, tri, croissant = true){
@@ -566,47 +570,90 @@ function vueAlertes(){
   const n = niv => s.filter(x => x.niveau === niv).length;
   const aFaire = D.journal.filter(j => j.statut === 'À faire').length;
   const diff = aTraiter();
-  const aRelancer = s.filter(x =>
-    ['relance-muette','retard','surveiller','sans-tarif','relance'].includes(x.niveau));
+  const NIVEAUX_LISTE = ['relance-muette','retard','surveiller','sans-tarif','relance'];
+  const filtre = UI.alerte;
+
+  // Un filtre actif restreint la liste ; sinon on affiche tous les niveaux concernés.
+  const investiguer = s.filter(x => filtre && filtre !== 'diffusion'
+    ? x.niveau === filtre
+    : NIVEAUX_LISTE.includes(x.niveau));
+
+  const compteur = (cle, valeur, libelle, classe) =>
+    `<div class="compteur ${classe} ${filtre === cle ? 'actif' : ''}" data-filtre="${cle}"
+          role="button" tabindex="0">
+       <span class="n">${valeur}</span><span class="l">${libelle}</span></div>`;
+
+  const listeInvestiguer = investiguer.length
+    ? `<div class="liste">${investiguer.map(x => ligne(x, true)).join('')}</div>`
+    : `<div class="vide">${filtre
+        ? 'Aucun fournisseur dans cette catégorie.'
+        : "Aucun fournisseur à investiguer. Les prochaines échéances apparaîtront ici trente jours avant leur date."}</div>`;
+
+  const listeDiffusion = diff.length
+    ? `<div class="liste">${diff.map(t => {
+        const j = Math.round((AUJ() - t.debut)/86400000);
+        const tard = j > 0;
+        return `<div class="ligne ${tard?'retard':'surveiller'}" data-id="${t.frs.id}">
+          <div class="principal">
+            <div class="nom">${esc(t.frs.raison_sociale)}</div>
+            <div class="meta">Applicable le ${t.debut.toLocaleDateString('fr-FR')}
+              ${etiqEtat(t.etat)}
+              ${t.maj_sap ? ' · SAP le '+fr(t.maj_sap) : ' · pas encore saisi dans SAP'}</div>
+          </div>
+          <div class="verdict ${tard?'retard':'surveiller'}">
+            <strong>${tard ? 'Applicable depuis '+j+' j' : 'Dans '+Math.abs(j)+' j'}</strong>
+            non diffusé
+          </div>
+          <button class="btn mini creux" data-cloturer="${t.id}"
+                  title="Sortir de la liste sans affirmer que le tarif a été diffusé">Clôturer</button>
+        </div>`;}).join('')}</div>`
+    : `<div class="vide">Aucun tarif en attente de diffusion.</div>`;
 
   $('#vue-alertes').innerHTML = `
     <div class="compteurs">
-      <div class="compteur retard"><span class="n">${n('retard')}</span><span class="l">tarifs en retard</span></div>
-      <div class="compteur surveiller"><span class="n">${n('surveiller')}</span><span class="l">échéances sous 30 jours</span></div>
-      <div class="compteur"><span class="n">${n('sans-tarif')}</span><span class="l">sans tarif enregistré</span></div>
-      <div class="compteur diffusion"><span class="n">${diff.length}</span><span class="l">tarifs à diffuser</span></div>
-      <div class="compteur actions"><span class="n">${aFaire}</span><span class="l">actions ouvertes</span></div>
+      ${compteur('retard', n('retard'), 'sans tarif depuis trop longtemps', 'retard')}
+      ${compteur('surveiller', n('surveiller'), 'échéances sous 30 jours', 'surveiller')}
+      ${compteur('sans-tarif', n('sans-tarif'), 'aucun tarif enregistré', '')}
+      ${compteur('relance', n('relance') + n('relance-muette'), 'demandes en attente', 'demande')}
+      ${compteur('diffusion', diff.length, 'tarifs à diffuser', 'diffusion')}
+      ${compteur('actions', aFaire, 'notes à traiter', 'actions')}
     </div>
-    <div class="bloc-titre">
-      <h2>Ce qui demande une relance</h2>
-      <span class="compte">${aRelancer.length} fournisseur${aRelancer.length>1?'s':''}</span>
-    </div>
-    ${aRelancer.length ? `<div class="liste">${aRelancer.map(x => ligne(x, true)).join('')}</div>`
-      : `<div class="vide">Rien à relancer aujourd'hui. Les prochaines échéances apparaîtront ici trente jours avant leur date.</div>`}
 
-    <div class="bloc-titre" style="margin-top:30px">
-      <h2>Tarifs reçus, pas encore diffusés</h2>
-      <span class="compte">${diff.length}</span>
-    </div>
-    ${diff.length ? `<div class="liste">${diff.map(t => {
-      const j = Math.round((AUJ() - t.debut)/86400000);
-      const tard = j > 0;
-      return `<div class="ligne ${tard?'retard':'surveiller'}" data-id="${t.frs.id}">
-        <div class="principal">
-          <div class="nom">${esc(t.frs.raison_sociale)}</div>
-          <div class="meta">Applicable le ${t.debut.toLocaleDateString('fr-FR')}
-            ${etiqEtat(t.etat)}
-            ${t.maj_sap ? ' · SAP le '+fr(t.maj_sap) : ' · pas encore saisi dans SAP'}</div>
-        </div>
-        <div class="verdict ${tard?'retard':'surveiller'}">
-          <strong>${tard ? 'Applicable depuis '+j+' j' : 'Dans '+Math.abs(j)+' j'}</strong>
-          non diffusé
-        </div>
-        <button class="btn mini creux" data-cloturer="${t.id}"
-                title="Sortir de la liste sans affirmer que le tarif a été diffusé">Clôturer</button>
-      </div>`;}).join('')}</div>`
-      : `<div class="vide">Aucun tarif en attente de diffusion.</div>`}`;
+    ${filtre ? `<div style="margin-bottom:18px">
+        <button class="btn mini creux" id="tout-afficher">Retirer le filtre</button></div>` : ''}
+
+    ${filtre === 'diffusion' ? '' : `
+      <div class="bloc-titre">
+        <h2>À investiguer</h2>
+        <span class="compte">${investiguer.length} fournisseur${investiguer.length>1?'s':''}</span>
+      </div>
+      <p style="margin:-4px 0 14px;color:var(--encre-doux)">Pas de tarif depuis longtemps.
+        Reste à savoir s'il s'agit d'une saisie oubliée ou d'un tarif à réclamer.</p>
+      ${listeInvestiguer}`}
+
+    ${filtre && filtre !== 'diffusion' ? '' : `
+      <div class="bloc-titre" style="${filtre === 'diffusion' ? '' : 'margin-top:30px'}">
+        <h2>Tarifs reçus, pas encore diffusés</h2>
+        <span class="compte">${diff.length}</span>
+      </div>
+      ${listeDiffusion}`}`;
+
   brancherLignes('#vue-alertes');
+
+  const basculer = cle => {
+    if(cle === 'actions'){ afficher('actions'); return; }
+    UI.alerte = (UI.alerte === cle) ? null : cle;
+    vueAlertes();
+  };
+  document.querySelectorAll('[data-filtre]').forEach(el => {
+    el.addEventListener('click', () => basculer(el.dataset.filtre));
+    el.addEventListener('keydown', e => {
+      if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); basculer(el.dataset.filtre); }
+    });
+  });
+  if($('#tout-afficher'))
+    $('#tout-afficher').addEventListener('click', () => { UI.alerte = null; vueAlertes(); });
+
   document.querySelectorAll('[data-relance]').forEach(b =>
     b.addEventListener('click', async e => {
       e.stopPropagation();
