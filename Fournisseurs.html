@@ -88,6 +88,7 @@ textarea:focus-visible,a:focus-visible{outline:2px solid var(--orange);outline-o
 .compteur.actions{border-left:4px solid var(--turquoise)}
 .compteur.diffusion{border-left:4px solid var(--abysse)}
 .compteur.demande{border-left:4px solid var(--turquoise)}
+.compteur.saisie{border-left:4px solid #8A5D00}
 .compteur[data-filtre]{cursor:pointer;transition:none}
 .compteur[data-filtre]:hover{background:#F7FAF9;border-color:var(--turquoise)}
 .compteur.actif{background:#E4F2EE;border-color:var(--abysse);box-shadow:inset 0 0 0 1px var(--abysse)}
@@ -500,9 +501,9 @@ const RANG = {'relance-muette':0, retard:1, surveiller:2, 'sans-tarif':3,
               'sans-echeance':4, relance:5, ok:6, 'hors-suivi':7};
 const DELAI_RELANCE = 15; // jours avant qu'une relance sans réponse ne remonte
 
-// Un tarif est à traiter s'il s'applique bientôt ou déjà et n'a pas été diffusé.
+// Le circuit comporte deux étapes successives : saisie dans SAP, puis diffusion.
 const HORS_CIRCUIT = ['NE PAS SAISIR','PAS DE MODIF','NON TRAITE'];
-function aTraiter(){
+function enCircuit(condition){
   const limite = new Date(AUJ().getTime() + 15*86400000);
   const noms = Object.fromEntries(D.fournisseurs.map(f => [f.id, f]));
   return D.tarifs
@@ -511,12 +512,14 @@ function aTraiter(){
       if(!d0 || d0 > limite) return false;
       if(t.diffusion) return false;
       if(HORS_CIRCUIT.includes(t.etat)) return false;
-      return true;
+      return condition(t);
     })
     .map(t => ({...t, debut:jour(t.date_application), frs:noms[t.fournisseur_id]}))
     .filter(t => t.frs)
     .sort((a,b) => a.debut - b.debut);
 }
+const aSaisir   = () => enCircuit(t => !t.maj_sap);
+const aDiffuser = () => enCircuit(t => !!t.maj_sap);
 
 // Résumé lisible du circuit de traitement d'une version tarifaire.
 function circuit(v){
@@ -569,12 +572,12 @@ function vueAlertes(){
   const s = situations();
   const n = niv => s.filter(x => x.niveau === niv).length;
   const aFaire = D.journal.filter(j => j.statut === 'À faire').length;
-  const diff = aTraiter();
+  const saisie = aSaisir(), diffusion = aDiffuser();
   const NIVEAUX_LISTE = ['relance-muette','retard','surveiller','sans-tarif','relance'];
   const filtre = UI.alerte;
+  const surTarifs = filtre === 'saisie' || filtre === 'diffusion';
 
-  // Un filtre actif restreint la liste ; sinon on affiche tous les niveaux concernés.
-  const investiguer = s.filter(x => filtre && filtre !== 'diffusion'
+  const investiguer = s.filter(x => filtre && !surTarifs
     ? x.niveau === filtre
     : NIVEAUX_LISTE.includes(x.niveau));
 
@@ -583,14 +586,9 @@ function vueAlertes(){
           role="button" tabindex="0">
        <span class="n">${valeur}</span><span class="l">${libelle}</span></div>`;
 
-  const listeInvestiguer = investiguer.length
-    ? `<div class="liste">${investiguer.map(x => ligne(x, true)).join('')}</div>`
-    : `<div class="vide">${filtre
-        ? 'Aucun fournisseur dans cette catégorie.'
-        : "Aucun fournisseur à investiguer. Les prochaines échéances apparaîtront ici trente jours avant leur date."}</div>`;
-
-  const listeDiffusion = diff.length
-    ? `<div class="liste">${diff.map(t => {
+  // Bloc commun aux deux étapes du circuit, avec l'action attendue à ce stade.
+  const blocTarifs = (liste, etape) => liste.length
+    ? `<div class="liste">${liste.map(t => {
         const j = Math.round((AUJ() - t.debut)/86400000);
         const tard = j > 0;
         return `<div class="ligne ${tard?'retard':'surveiller'}" data-id="${t.frs.id}">
@@ -598,16 +596,23 @@ function vueAlertes(){
             <div class="nom">${esc(t.frs.raison_sociale)}</div>
             <div class="meta">Applicable le ${t.debut.toLocaleDateString('fr-FR')}
               ${etiqEtat(t.etat)}
-              ${t.maj_sap ? ' · SAP le '+fr(t.maj_sap) : ' · pas encore saisi dans SAP'}</div>
+              ${etape === 'saisie'
+                ? ' · pas encore saisi dans SAP'
+                : ' · SAP le ' + fr(t.maj_sap)}</div>
           </div>
           <div class="verdict ${tard?'retard':'surveiller'}">
             <strong>${tard ? 'Applicable depuis '+j+' j' : 'Dans '+Math.abs(j)+' j'}</strong>
-            non diffusé
+            ${etape === 'saisie' ? 'à saisir' : 'non diffusé'}
           </div>
-          <button class="btn mini creux" data-cloturer="${t.id}"
-                  title="Sortir de la liste sans affirmer que le tarif a été diffusé">Clôturer</button>
+          ${etape === 'saisie'
+            ? `<button class="btn mini creux" data-saisi="${t.id}"
+                 title="Enregistre la MAJ SAP à ce jour et passe l'état à SAISI">Saisi</button>`
+            : `<button class="btn mini creux" data-cloturer="${t.id}"
+                 title="Sortir de la liste sans affirmer que le tarif a été diffusé">Clôturer</button>`}
         </div>`;}).join('')}</div>`
-    : `<div class="vide">Aucun tarif en attente de diffusion.</div>`;
+    : `<div class="vide">${etape === 'saisie'
+        ? 'Aucun tarif en attente de saisie.'
+        : 'Aucun tarif en attente de diffusion.'}</div>`;
 
   $('#vue-alertes').innerHTML = `
     <div class="compteurs">
@@ -615,28 +620,38 @@ function vueAlertes(){
       ${compteur('surveiller', n('surveiller'), 'échéances sous 30 jours', 'surveiller')}
       ${compteur('sans-tarif', n('sans-tarif'), 'aucun tarif enregistré', '')}
       ${compteur('relance', n('relance') + n('relance-muette'), 'demandes en attente', 'demande')}
-      ${compteur('diffusion', diff.length, 'tarifs à diffuser', 'diffusion')}
+      ${compteur('saisie', saisie.length, 'tarifs à saisir', 'saisie')}
+      ${compteur('diffusion', diffusion.length, 'tarifs à diffuser', 'diffusion')}
       ${compteur('actions', aFaire, 'notes à traiter', 'actions')}
     </div>
 
     ${filtre ? `<div style="margin-bottom:18px">
         <button class="btn mini creux" id="tout-afficher">Retirer le filtre</button></div>` : ''}
 
-    ${filtre === 'diffusion' ? '' : `
+    ${surTarifs ? '' : `
       <div class="bloc-titre">
         <h2>À investiguer</h2>
         <span class="compte">${investiguer.length} fournisseur${investiguer.length>1?'s':''}</span>
       </div>
       <p style="margin:-4px 0 14px;color:var(--encre-doux)">Pas de tarif depuis longtemps.
         Reste à savoir s'il s'agit d'une saisie oubliée ou d'un tarif à réclamer.</p>
-      ${listeInvestiguer}`}
+      ${investiguer.length ? `<div class="liste">${investiguer.map(x => ligne(x, true)).join('')}</div>`
+        : `<div class="vide">${filtre ? 'Aucun fournisseur dans cette catégorie.'
+            : "Aucun fournisseur à investiguer. Les prochaines échéances apparaîtront ici trente jours avant leur date."}</div>`}`}
+
+    ${filtre && filtre !== 'saisie' ? '' : `
+      <div class="bloc-titre" style="${filtre === 'saisie' ? '' : 'margin-top:30px'}">
+        <h2>Tarifs à saisir dans SAP</h2>
+        <span class="compte">${saisie.length}</span>
+      </div>
+      ${blocTarifs(saisie, 'saisie')}`}
 
     ${filtre && filtre !== 'diffusion' ? '' : `
       <div class="bloc-titre" style="${filtre === 'diffusion' ? '' : 'margin-top:30px'}">
-        <h2>Tarifs reçus, pas encore diffusés</h2>
-        <span class="compte">${diff.length}</span>
+        <h2>Saisis, pas encore diffusés</h2>
+        <span class="compte">${diffusion.length}</span>
       </div>
-      ${listeDiffusion}`}`;
+      ${blocTarifs(diffusion, 'diffusion')}`}`;
 
   brancherLignes('#vue-alertes');
 
@@ -665,6 +680,13 @@ function vueAlertes(){
       e.stopPropagation();
       const f = D.fournisseurs.find(x => x.id === b.dataset.verifie);
       if(await marquerVerifie(f)) vueAlertes();
+    }));
+  document.querySelectorAll('[data-saisi]').forEach(b =>
+    b.addEventListener('click', async e => {
+      e.stopPropagation();
+      if(!confirm('Enregistrer la saisie SAP à ce jour et passer l\'état à SAISI ?')) return;
+      await enregistrer('tarifs', {maj_sap:iso(AUJ()), etat:'SAISI'}, b.dataset.saisi);
+      await charger(); toast('Saisie enregistrée'); vueAlertes();
     }));
   document.querySelectorAll('[data-cloturer]').forEach(b =>
     b.addEventListener('click', async e => {
