@@ -364,6 +364,7 @@ const jour = s => { if(!s) return null; const d = new Date(s+'T00:00:00'); retur
 const iso  = d => d ? d.toISOString().slice(0,10) : null;
 const fr   = s => { const d = jour(s); return d ? d.toLocaleDateString('fr-FR') : '-'; };
 const ecart = d => Math.round((d - AUJ())/86400000);
+const premierJanvierSuivant = () => new Date(AUJ().getFullYear() + 1, 0, 1);
 const moisPlus = (d,n) => { const r = new Date(d); const j = r.getDate();
   r.setMonth(r.getMonth()+Number(n)); if(r.getDate()<j) r.setDate(0); return r; };
 const esc = t => String(t ?? '').replace(/[&<>"']/g, c =>
@@ -442,11 +443,18 @@ function situation(f){
   let echeance = null;
   if(f.mode_suivi === 'Échéance prévisible'){
     echeance = jour(f.prochaine_revision);
-  } else if(f.periodicite_mois){
+  } else {
     // Le compteur repart du plus récent des deux : nouveau tarif ou vérification.
     const repere = [enCours ? enCours.debut : null, verifie]
       .filter(Boolean).sort((a,b) => b - a)[0];
-    if(repere) echeance = moisPlus(repere, f.periodicite_mois);
+    const prevue = jour(f.prochaine_revision);
+    if(prevue && (!repere || prevue > repere)){
+      // Date fixée à la main ou posée lors d'une vérification. Elle prime,
+      // sauf si un tarif plus récent est arrivé depuis : le cycle repart alors.
+      echeance = prevue;
+    } else if(repere && f.periodicite_mois){
+      echeance = moisPlus(repere, f.periodicite_mois);
+    }
   }
   const jours = echeance ? ecart(echeance) : null;
   let niveau = 'ok', verdict = 'À jour';
@@ -1135,16 +1143,20 @@ function vueDonnees(){
 /* ---------- vérification sans changement ---------- */
 // Repousse l'échéance sans créer de fausse version tarifaire, et laisse une trace datée.
 async function marquerVerifie(f){
+  const cible = premierJanvierSuivant();
   if(!confirm(`Confirmer que le tarif de ${f.raison_sociale} est toujours d'actualité ?\n\n`
-    + "L'échéance repart pour " + (f.periodicite_mois || 12) + " mois et la vérification est tracée dans l'historique."))
+    + `Prochaine échéance repoussée au ${cible.toLocaleDateString('fr-FR')}, `
+    + "et vérification tracée dans l'historique."))
     return false;
   try{
     const aujourdhui = iso(AUJ());
-    await enregistrer('fournisseurs', {verifie_le:aujourdhui}, f.id);
+    await enregistrer('fournisseurs',
+      {verifie_le:aujourdhui, prochaine_revision:iso(cible)}, f.id);
     await enregistrer('journal', {
       fournisseur_id:f.id, date:aujourdhui, type_evenement:'Note',
       objet:'Tarif vérifié, aucun changement',
-      detail:'Vérification menée sans nouveau tarif reçu. Échéance repoussée.',
+      detail:'Vérification menée sans nouveau tarif reçu. Échéance repoussée au '
+             + cible.toLocaleDateString('fr-FR') + '.',
       statut:'Fait'}, null);
     await charger();
     toast('Vérification enregistrée');
