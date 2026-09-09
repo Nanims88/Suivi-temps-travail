@@ -245,12 +245,14 @@ dialog .pied{padding:14px 22px;border-top:1px solid var(--trait);display:flex;ga
     <button data-vue="alertes" aria-current="page">À surveiller</button>
     <button data-vue="fournisseurs">Fournisseurs</button>
     <button data-vue="actions">Actions</button>
+    <button data-vue="bord">Tableau de bord</button>
     <button data-vue="donnees">Données</button>
   </nav>
   <main>
     <div id="vue-alertes"></div>
     <div id="vue-fournisseurs" hidden></div>
     <div id="vue-actions" hidden></div>
+    <div id="vue-bord" hidden></div>
     <div id="vue-donnees" hidden></div>
     <div id="vue-fiche" hidden></div>
   </main>
@@ -395,7 +397,7 @@ let vueCourante = 'alertes';
 let ficheOuverte = null;
 
 // Choix d'affichage conservés d'une vue à l'autre pendant la session.
-const UI = { rech:'', type:'', statut:'', etat:'_attente', alerte:null };
+const UI = { rech:'', type:'', statut:'', etat:'_attente', alerte:null, periode:'12mois', debut:null, fin:null };
 
 // Supabase plafonne une lecture à 1000 lignes. On pagine pour tout récupérer.
 async function tout(table, tri, croissant = true){
@@ -562,9 +564,10 @@ function afficher(vue){
   vueCourante = vue; ficheOuverte = null;
   document.querySelectorAll('nav button').forEach(b =>
     b.setAttribute('aria-current', b.dataset.vue === vue ? 'page' : 'false'));
-  for(const v of ['alertes','fournisseurs','actions','donnees','fiche'])
+  for(const v of ['alertes','fournisseurs','actions','bord','donnees','fiche'])
     $('#vue-'+v).hidden = (v !== vue);
-  ({alertes:vueAlertes, fournisseurs:vueFournisseurs, actions:vueActions, donnees:vueDonnees}[vue])();
+  ({alertes:vueAlertes, fournisseurs:vueFournisseurs, actions:vueActions,
+    bord:vueBord, donnees:vueDonnees}[vue])();
   window.scrollTo(0,0);
 }
 
@@ -852,7 +855,7 @@ function vueActions(){
 /* ---------- fiche fournisseur ---------- */
 async function ouvrirFiche(id){
   ficheOuverte = id;
-  for(const v of ['alertes','fournisseurs','actions','donnees','fiche']) $('#vue-'+v).hidden = (v!=='fiche');
+  for(const v of ['alertes','fournisseurs','actions','bord','donnees','fiche']) $('#vue-'+v).hidden = (v!=='fiche');
   dessinerFiche();
   window.scrollTo(0,0);
 }
@@ -1345,6 +1348,180 @@ async function fusionner(source){
     }
   });
   $('#modal').showModal();
+}
+
+/* =====================================================================
+   6 ter. Tableau de bord
+   ===================================================================== */
+
+const mediane = t => {
+  if(!t.length) return null;
+  const v = [...t].sort((a,b) => a - b);
+  const m = Math.floor(v.length / 2);
+  return v.length % 2 ? v[m] : Math.round((v[m-1] + v[m]) / 2);
+};
+const ecartJours = (a, b) => {
+  const x = jour(a), y = jour(b);
+  return (x && y) ? Math.round((x - y) / 86400000) : null;
+};
+const listeEcarts = (lot, a, b) =>
+  lot.map(t => ecartJours(t[a], t[b])).filter(v => v !== null);
+
+// Bornes de la période retenue.
+function bornes(){
+  const an = AUJ().getFullYear();
+  switch(UI.periode){
+    case 'annee':      return [new Date(an,0,1), new Date(an,11,31)];
+    case 'precedente': return [new Date(an-1,0,1), new Date(an-1,11,31)];
+    case '12mois':     return [moisPlus(AUJ(), -12), AUJ()];
+    case 'tout': {
+      // Bornes déduites des données, pour ne pas dessiner des années vides.
+      const toutes = D.tarifs.flatMap(t => [t.date_application, t.date_reception, t.maj_sap])
+        .filter(Boolean).sort();
+      return [jour(toutes[0]) || new Date(an-1,0,1),
+              new Date(Math.max(AUJ(), jour(toutes[toutes.length-1]) || AUJ()))];
+    }
+    default:           return [jour(UI.debut) || new Date(2000,0,1), jour(UI.fin) || AUJ()];
+  }
+}
+const dansPeriode = (d, a, b) => { const x = jour(d); return x && x >= a && x <= b; };
+
+// Histogramme mensuel, en SVG, sans dépendance externe.
+function histogramme(paires, titre){
+  if(!paires.length) return `<div class="vide">Aucune donnée sur la période.</div>`;
+  const max = Math.max(...paires.map(p => p[1]), 1);
+  const L = 700, H = 210, bas = 42, gauche = 34;
+  const pas = (L - gauche) / paires.length;
+  const largeur = Math.max(4, Math.min(46, pas - 8));
+  return `<svg viewBox="0 0 ${L} ${H}" width="100%" role="img" aria-label="${esc(titre)}"
+      style="background:var(--surface);border:1px solid var(--trait);border-radius:3px">
+    ${[0, .5, 1].map(f => {
+      const y = 14 + (H - bas - 14) * (1 - f);
+      return `<line x1="${gauche}" y1="${y}" x2="${L-6}" y2="${y}" stroke="var(--trait)"/>
+              <text x="4" y="${y+4}" font-size="11" fill="var(--encre-doux)"
+                    font-family="Calibri,sans-serif">${Math.round(max*f)}</text>`;
+    }).join('')}
+    ${paires.map(([lib, v], i) => {
+      const h = (H - bas - 14) * (v / max);
+      const x = gauche + i * pas + (pas - largeur) / 2;
+      return `<rect x="${x}" y="${H - bas - h}" width="${largeur}" height="${h}"
+                    fill="var(--abysse)" rx="2"><title>${esc(lib)} : ${v}</title></rect>
+        ${v ? `<text x="${x + largeur/2}" y="${H - bas - h - 5}" font-size="11"
+              text-anchor="middle" fill="var(--encre-doux)" font-family="Calibri,sans-serif">${v}</text>` : ''}
+        <text x="${x + largeur/2}" y="${H - bas + 16}" font-size="11" text-anchor="middle"
+              fill="var(--encre-doux)" font-family="Calibri,sans-serif"
+              transform="rotate(-35 ${x + largeur/2} ${H - bas + 16})">${esc(lib)}</text>`;
+    }).join('')}
+  </svg>`;
+}
+
+function vueBord(){
+  const [a, b] = bornes();
+  const noms = Object.fromEntries(D.fournisseurs.map(f => [f.id, f]));
+
+  const recus    = D.tarifs.filter(t => dansPeriode(t.date_reception, a, b));
+  const saisis   = D.tarifs.filter(t => dansPeriode(t.maj_sap, a, b));
+  const diffuses = D.tarifs.filter(t => dansPeriode(t.date_diffusion, a, b));
+
+  const traitement = listeEcarts(saisis, 'maj_sap', 'date_reception');
+  const parRapport = listeEcarts(saisis, 'maj_sap', 'date_application');
+  const arbitrage  = listeEcarts(D.tarifs.filter(t => dansPeriode(t.retour_resp, a, b)),
+                                 'retour_resp', 'envoi_resp');
+  const diffusion  = listeEcarts(diffuses, 'date_diffusion', 'maj_sap');
+  const enRetard   = parRapport.filter(v => v > 0).length;
+
+  const j = v => v === null ? '-' : (v > 0 ? v + ' j' : v === 0 ? 'le jour même' : Math.abs(v) + ' j d\'avance');
+  const carte = (valeur, libelle, detail, classe) =>
+    `<div class="compteur ${classe||''}"><span class="n">${valeur}</span>
+       <span class="l">${libelle}</span>
+       ${detail ? `<span class="l" style="display:block;margin-top:3px;opacity:.8">${detail}</span>` : ''}</div>`;
+
+  // Regroupement mensuel, ou annuel au delà de deux ans.
+  const mois = Math.round((b - a) / 2629800000);
+  const cles = [], compte = {};
+  if(mois <= 26){
+    const d0 = new Date(a.getFullYear(), a.getMonth(), 1);
+    for(let d = d0; d <= b; d = new Date(d.getFullYear(), d.getMonth()+1, 1)){
+      const c = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+      cles.push([c, d.toLocaleDateString('fr-FR', {month:'short', year:'2-digit'})]);
+      compte[c] = 0;
+    }
+    saisis.forEach(t => { const c = t.maj_sap.slice(0,7); if(c in compte) compte[c]++; });
+  } else {
+    for(let an = a.getFullYear(); an <= b.getFullYear(); an++){
+      cles.push([String(an), String(an)]); compte[an] = 0;
+    }
+    saisis.forEach(t => { const c = t.maj_sap.slice(0,4); if(c in compte) compte[c]++; });
+  }
+
+  const lents = saisis
+    .map(t => ({t, d:ecartJours(t.maj_sap, t.date_reception)}))
+    .filter(x => x.d !== null)
+    .sort((x,y) => y.d - x.d).slice(0, 10);
+
+  const opt = (v, l) => `<option value="${v}" ${UI.periode===v?'selected':''}>${l}</option>`;
+
+  $('#vue-bord').innerHTML = `
+    <div class="filtres">
+      <select id="periode">
+        ${opt('12mois','12 derniers mois')}${opt('annee','Année en cours')}
+        ${opt('precedente','Année précédente')}${opt('tout',"Tout l'historique")}
+        ${opt('perso','Période personnalisée')}
+      </select>
+      ${UI.periode === 'perso' ? `
+        <input type="date" id="p-debut" value="${UI.debut||''}">
+        <input type="date" id="p-fin" value="${UI.fin||''}">` : ''}
+      <span style="align-self:center;color:var(--encre-doux)">
+        du ${a.toLocaleDateString('fr-FR')} au ${b.toLocaleDateString('fr-FR')}</span>
+    </div>
+
+    <div class="bloc-titre"><h2>Volumes</h2></div>
+    <div class="compteurs">
+      ${carte(recus.length, 'tarifs reçus', null, 'demande')}
+      ${carte(saisis.length, 'mises à jour SAP', null, 'saisie')}
+      ${carte(diffuses.length, 'diffusions', null, 'diffusion')}
+    </div>
+
+    <div class="bloc-titre" style="margin-top:26px"><h2>Délais médians</h2></div>
+    <div class="compteurs">
+      ${carte(j(mediane(traitement)), 'réception vers SAP', `${traitement.length} tarifs mesurés`)}
+      ${carte(j(mediane(arbitrage)), 'envoi vers retour responsable', `${arbitrage.length} allers-retours`)}
+      ${carte(j(mediane(diffusion)), 'SAP vers diffusion', `${diffusion.length} diffusions`)}
+      ${carte(j(mediane(parRapport)), 'application vers SAP',
+        parRapport.length ? `${Math.round(100*enRetard/parRapport.length)} % saisis après application` : null,
+        mediane(parRapport) > 0 ? 'retard' : 'surveiller')}
+    </div>
+
+    <div class="bloc-titre" style="margin-top:26px">
+      <h2>Mises à jour SAP</h2><span class="compte">${saisis.length} sur la période</span>
+    </div>
+    ${histogramme(cles.map(([c,l]) => [l, compte[c] || 0]), 'Mises à jour SAP par période')}
+
+    <div class="bloc-titre" style="margin-top:26px">
+      <h2>Traitements les plus longs</h2>
+      <span class="compte">réception vers SAP</span>
+    </div>
+    ${lents.length ? `<table><thead><tr><th>Délai</th><th>Fournisseur</th>
+        <th>Application</th><th>Réception</th><th>MAJ SAP</th></tr></thead><tbody>
+      ${lents.map(({t,d}) => `<tr style="cursor:pointer" data-id="${t.fournisseur_id}">
+        <td><b>${d} j</b></td>
+        <td>${esc(noms[t.fournisseur_id]?.raison_sociale || '-')}</td>
+        <td>${fr(t.date_application)}</td><td>${fr(t.date_reception)}</td><td>${fr(t.maj_sap)}</td>
+      </tr>`).join('')}</tbody></table>`
+      : `<div class="vide">Aucun délai mesurable sur la période.</div>`}
+
+    <p style="color:var(--encre-doux);margin-top:22px">Les délais ne sont calculés que sur les
+      tarifs dont les deux dates sont renseignées. Un délai négatif signale une anticipation,
+      par exemple une saisie SAP effectuée avant la date d'application du tarif.</p>`;
+
+  $('#periode').addEventListener('change', () => { UI.periode = $('#periode').value; vueBord(); });
+  ['p-debut','p-fin'].forEach(id => { if($('#'+id))
+    $('#'+id).addEventListener('change', () => {
+      UI.debut = $('#p-debut').value; UI.fin = $('#p-fin').value; vueBord();
+    });
+  });
+  document.querySelectorAll('#vue-bord tr[data-id]').forEach(el =>
+    el.addEventListener('click', () => ouvrirFiche(el.dataset.id)));
 }
 
 /* =====================================================================
