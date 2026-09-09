@@ -4,18 +4,24 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Mes tâches</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Cascadia+Code:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
+  :root{
+    --abysse:#015959; --abysse-clair:#0A7472; --turquoise:#57CBBB; --orange:#F8AC16; --retard:#A33327;
+    --fond:#F3F5F4; --surface:#FFFFFF; --encre:#16302E; --encre-doux:#5C6F6C; --trait:#DCE3E1;
+    --titre:'Century Gothic','URW Gothic','Questrial','Futura','Trebuchet MS',sans-serif;
+    --corps:'Calibri','Carlito','Segoe UI',system-ui,sans-serif;
+  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #F3F3F3; color: #1B1B1B; font-family: "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif; }
-  .disp { font-family: "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif; font-weight: 600; }
-  .mono { font-family: "Cascadia Code", Consolas, "Cascadia Mono", monospace; }
+  body { background: var(--fond); color: var(--encre); font-family: var(--corps); -webkit-font-smoothing: antialiased; }
+  .disp { font-family: var(--titre); font-weight: 700; letter-spacing: -.01em; }
+  .mono { font-family: "Consolas", "SF Mono", "Cascadia Mono", ui-monospace, monospace; }
+  button, input, select, textarea { font-family: inherit; }
   input:focus, textarea:focus, select:focus { outline: none; }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
   .chip { transition: all .15s ease; cursor: pointer; user-select: none; }
   .chip:active { transform: scale(0.96); }
   ::-webkit-scrollbar { height: 6px; width: 6px; }
-  ::-webkit-scrollbar-thumb { background: #D6D6D6; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb { background: var(--trait); border-radius: 3px; }
 </style>
 </head>
 <body>
@@ -369,11 +375,12 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /* ======================= THEME (identique au suivi de charge) ======================= */
 const C = {
-  bg: "#F3F3F3", panel: "#FFFFFF", panel2: "#FAFAFA",
-  border: "#E5E5E5", border2: "#D6D6D6",
-  text: "#1B1B1B", muted: "#616161", faint: "#8A8A8A",
+  bg: "#F3F5F4", panel: "#FFFFFF", panel2: "#F7FAF9",
+  border: "#DCE3E1", border2: "#C7D1CE",
+  text: "#16302E", muted: "#5C6F6C", faint: "#8A9793",
+  abysse: "#015959", abysseClair: "#0A7472", turquoise: "#57CBBB", orange: "#F8AC16", retard: "#A33327",
 };
-const SHADOW = "0 1px 2px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04)";
+const SHADOW = "";
 
 /* ======================= CATEGORIES (identiques au suivi de charge) ======================= */
 const CATS = [
@@ -391,9 +398,9 @@ const CATS = [
 const catByKey = (k) => CATS.find((c) => c.key === k);
 
 const STATUS = [
-  { key: "a_faire", label: "À faire", color: "#616161" },
-  { key: "en_cours", label: "En cours", color: "#C19C00" },
-  { key: "fait", label: "Fait", color: "#107C10" },
+  { key: "a_faire", label: "À faire", color: "#5C6F6C" },
+  { key: "en_cours", label: "En cours", color: "#57CBBB" },
+  { key: "fait", label: "Fait", color: "#57CBBB" },
 ];
 const statusByKey = (k) => STATUS.find((s) => s.key === k) || STATUS[0];
 const nextStatus = (k) => { const i = STATUS.findIndex((s) => s.key === k); return STATUS[(i + 1) % STATUS.length].key; };
@@ -490,14 +497,14 @@ function App() {
   return (
     <div style={{background:C.bg,minHeight:"100vh",color:C.text}}>
       {syncError && (
-        <div style={{padding:"8px 20px",background:"#D1343818",borderBottom:"1px solid #D1343855",fontSize:12,color:"#D13438",display:"flex",justifyContent:"space-between"}}>
+        <div style={{padding:"8px 20px",background:"#A3332718",borderBottom:"1px solid #A3332755",fontSize:12,color:"#A33327",display:"flex",justifyContent:"space-between"}}>
           <span>⚠️ Une synchronisation a échoué — vérifie ta connexion et recharge si besoin.</span>
-          <button onClick={()=>setSyncError(false)} style={{background:"none",border:"none",color:"#D13438",cursor:"pointer"}}>✕</button>
+          <button onClick={()=>setSyncError(false)} style={{background:"none",border:"none",color:"#A33327",cursor:"pointer"}}>✕</button>
         </div>
       )}
 
-      <div style={{padding:"18px 20px",borderBottom:`1px solid ${C.border}`,background:C.panel}}>
-        <div className="disp" style={{fontSize:20}}>Mes tâches</div>
+      <div style={{padding:"18px 20px",borderBottom:`1px solid ${C.border}`,background:C.panel,borderTop:`4px solid ${C.abysse}`}}>
+        <div className="disp" style={{fontSize:20,color:C.abysse}}>Mes tâches</div>
         <div className="mono" style={{fontSize:11,color:C.faint,marginTop:2}}>capture rapide, tri ensuite</div>
       </div>
 
@@ -509,17 +516,17 @@ function App() {
             onChange={(e)=>setQuickText(e.target.value)}
             onKeyDown={(e)=>{if(e.key==="Enter") addTask();}}
             placeholder="Note ce à quoi tu penses… (Entrée pour ajouter)"
-            style={{flex:1,background:C.panel,border:`1px solid ${C.border2}`,borderRadius:10,padding:"12px 14px",fontSize:15,color:C.text,boxShadow:SHADOW}}
+            style={{flex:1,background:C.panel,border:`1px solid ${C.border2}`,borderRadius:3,padding:"12px 14px",fontSize:15,color:C.text}}
           />
-          <button onClick={addTask} style={{padding:"0 20px",borderRadius:10,border:"none",background:"#0067C0",color:"#FFFFFF",fontSize:14,fontWeight:600,cursor:"pointer"}}>
+          <button onClick={addTask} style={{padding:"0 20px",borderRadius:3,border:"none",background:C.abysse,color:"#FFFFFF",fontSize:14,fontWeight:600,cursor:"pointer"}}>
             Ajouter
           </button>
         </div>
 
         {untriagedCount > 0 && (
           <button onClick={()=>{setCatFilter("none");setStatusFilter("actives");}} className="chip" style={{
-            display:"flex",alignItems:"center",gap:8,width:"100%",textAlign:"left",marginBottom:16,padding:"10px 14px",borderRadius:10,
-            border:"1px solid #C19C0055",background:"#C19C0012",color:"#8A6D00",fontSize:13,cursor:"pointer"}}>
+            display:"flex",alignItems:"center",gap:8,width:"100%",textAlign:"left",marginBottom:16,padding:"10px 14px",borderRadius:3,
+            border:"1px solid #F8AC1655",background:"#F8AC1615",color:"#8A5D00",fontSize:13,cursor:"pointer"}}>
             🗂️ <b>{untriagedCount}</b> tâche{untriagedCount>1?"s":""} à trier (sans catégorie)
           </button>
         )}
@@ -527,24 +534,24 @@ function App() {
         {/* Filtres statut */}
         <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
           {[["actives","Actives"],["a_faire","À faire"],["en_cours","En cours"],["fait","Fait"],["toutes","Toutes"]].map(([k,label]) => (
-            <button key={k} onClick={()=>setStatusFilter(k)} style={{padding:"6px 12px",borderRadius:8,fontSize:12,
-              border:`1px solid ${statusFilter===k?"#0067C0":C.border2}`, background:statusFilter===k?"#0067C018":C.panel, color:statusFilter===k?"#0067C0":C.muted, cursor:"pointer"}}>{label}</button>
+            <button key={k} onClick={()=>setStatusFilter(k)} style={{padding:"6px 12px",borderRadius:3,fontSize:12,
+              border:`1px solid ${statusFilter===k?C.abysse:C.border2}`, background:statusFilter===k?`${C.abysse}15`:C.panel, color:statusFilter===k?C.abysse:C.muted, cursor:"pointer"}}>{label}</button>
           ))}
           <div style={{flex:1}} />
-          <button onClick={()=>setUrgentOnly(u=>!u)} style={{padding:"6px 12px",borderRadius:8,fontSize:12,
-            border:`1px solid ${urgentOnly?"#D13438":C.border2}`, background:urgentOnly?"#D1343818":C.panel, color:urgentOnly?"#D13438":C.muted, cursor:"pointer"}}>🔴 Urgentes</button>
+          <button onClick={()=>setUrgentOnly(u=>!u)} style={{padding:"6px 12px",borderRadius:3,fontSize:12,
+            border:`1px solid ${urgentOnly?"#A33327":C.border2}`, background:urgentOnly?"#A3332718":C.panel, color:urgentOnly?"#A33327":C.muted, cursor:"pointer"}}>🔴 Urgentes</button>
         </div>
 
         {/* Filtres catégorie */}
         <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
-          <button onClick={()=>setCatFilter(null)} style={{padding:"5px 10px",borderRadius:999,fontSize:11,
-            border:`1px solid ${!catFilter?"#0067C0":C.border2}`, background:!catFilter?"#0067C018":C.panel, color:!catFilter?"#0067C0":C.muted, cursor:"pointer"}}>Toutes catégories</button>
+          <button onClick={()=>setCatFilter(null)} style={{padding:"5px 10px",borderRadius:3,fontSize:11,
+            border:`1px solid ${!catFilter?C.abysse:C.border2}`, background:!catFilter?`${C.abysse}15`:C.panel, color:!catFilter?C.abysse:C.muted, cursor:"pointer"}}>Toutes catégories</button>
           {CATS.map((c) => (
-            <button key={c.key} onClick={()=>setCatFilter(c.key)} style={{padding:"5px 10px",borderRadius:999,fontSize:11,
+            <button key={c.key} onClick={()=>setCatFilter(c.key)} style={{padding:"5px 10px",borderRadius:3,fontSize:11,
               border:`1px solid ${catFilter===c.key?c.color:C.border2}`, background:catFilter===c.key?`${c.color}18`:C.panel, color:catFilter===c.key?c.color:C.muted, cursor:"pointer"}}>{c.label}</button>
           ))}
-          <button onClick={()=>setCatFilter("none")} style={{padding:"5px 10px",borderRadius:999,fontSize:11,
-            border:`1px solid ${catFilter==="none"?"#8A8A8A":C.border2}`, background:catFilter==="none"?"#8A8A8A18":C.panel, color:catFilter==="none"?"#616161":C.muted, cursor:"pointer"}}>Sans catégorie</button>
+          <button onClick={()=>setCatFilter("none")} style={{padding:"5px 10px",borderRadius:3,fontSize:11,
+            border:`1px solid ${catFilter==="none"?C.muted:C.border2}`, background:catFilter==="none"?`${C.muted}18`:C.panel, color:catFilter==="none"?C.text:C.muted, cursor:"pointer"}}>Sans catégorie</button>
         </div>
 
         {/* Liste des tâches */}
@@ -560,12 +567,12 @@ function App() {
 
         <div style={{marginTop:24,paddingTop:16,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span className="mono" style={{fontSize:11,color:C.faint}}>{tasks.length} tâche(s) au total</span>
-          <button onClick={exportCSV} style={{fontSize:12,color:"#0067C0",background:"#0067C018",border:"1px solid #0067C055",borderRadius:8,padding:"6px 12px",cursor:"pointer"}}>📊 Exporter en CSV</button>
+          <button onClick={exportCSV} style={{fontSize:12,color:C.abysse,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:3,padding:"6px 12px",cursor:"pointer"}}>📊 Exporter en CSV</button>
         </div>
       </div>
 
       {toast && (
-        <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",background:C.panel,border:`1px solid ${C.border2}`,borderRadius:10,padding:"10px 16px",fontSize:13,color:C.text,boxShadow:"0 4px 16px rgba(0,0,0,0.18)"}}>
+        <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",background:C.panel,border:`1px solid ${C.border2}`,borderRadius:3,padding:"10px 16px",fontSize:13,color:C.text,boxShadow:"0 1px 3px rgba(1,89,89,0.18)"}}>
           ✓ {toast}
         </div>
       )}
@@ -580,11 +587,11 @@ function TaskRow({t,editing,onCycleStatus,onTogglePriority,onSetCategory,onDelet
   const isDone = t.status === "fait";
 
   return (
-    <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:C.panel,borderRadius:10,border:`1px solid ${C.border}`,boxShadow:SHADOW}}>
+    <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:C.panel,borderRadius:3,border:`1px solid ${C.border}`}}>
       <button onClick={onCycleStatus} title="Changer le statut" style={{
-        width:20,height:20,borderRadius:6,border:`2px solid ${s.color}`,background:isDone?s.color:"transparent",
+        width:20,height:20,borderRadius:3,border:`2px solid ${s.color}`,background:isDone?s.color:"transparent",
         display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",padding:0}}>
-        {isDone && <span style={{color:"#FFFFFF",fontSize:12,lineHeight:1}}>✓</span>}
+        {isDone && <span style={{color:"#16302E",fontSize:12,lineHeight:1,fontWeight:700}}>✓</span>}
       </button>
 
       <button onClick={onTogglePriority} title="Marquer urgent" style={{background:"none",border:"none",cursor:"pointer",fontSize:15,opacity:t.priority==="urgente"?1:0.25,flexShrink:0,padding:0}}>
@@ -596,14 +603,14 @@ function TaskRow({t,editing,onCycleStatus,onTogglePriority,onSetCategory,onDelet
           <input autoFocus value={draft} onChange={(e)=>setDraft(e.target.value)}
             onKeyDown={(e)=>{if(e.key==="Enter") onEditSave(draft); if(e.key==="Escape") onEditCancel();}}
             onBlur={()=>onEditSave(draft)}
-            style={{width:"100%",background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:6,padding:"4px 6px",fontSize:14,color:C.text}} />
+            style={{width:"100%",background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:3,padding:"4px 6px",fontSize:14,color:C.text}} />
         ) : (
           <span onClick={onEditStart} style={{fontSize:14,cursor:"text",textDecoration:isDone?"line-through":"none",color:isDone?C.faint:C.text}}>{t.text}</span>
         )}
       </div>
 
       <select value={t.category||""} onChange={(e)=>onSetCategory(e.target.value)} style={{
-        fontSize:11,padding:"4px 6px",borderRadius:6,border:`1px solid ${cat?cat.color+"55":C.border2}`,
+        fontSize:11,padding:"4px 6px",borderRadius:3,border:`1px solid ${cat?cat.color+"55":C.border2}`,
         background:cat?`${cat.color}12`:C.panel2, color:cat?cat.color:C.faint, cursor:"pointer",maxWidth:130}}>
         <option value="">— catégorie —</option>
         {CATS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
