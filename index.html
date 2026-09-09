@@ -387,8 +387,8 @@ const C = {
 const CATS = [
   { key: "tarifs", label: "Tarifs", group: "production", color: "#0067C0",
     subs: ["Vérification MAJ tarifs (veille)", "Identification tarifs à mettre à jour", "Publication hebdomadaire (lundi)", "Préparation & MAJ tarifaire fournisseurs (annuelle)", "MAJ tarif — dossier", "Saisie tarifaire", "Vérification ARC — Correction", "Vérification ARC — Explication / contestation"] },
-  { key: "creations", label: "Créations", group: "production", color: "#E3008C",
-    subs: ["Vérification créations articles (veille)", "Création article", "MAJ BD articles"] },
+  { key: "creations", label: "BD articles", group: "production", color: "#E3008C",
+    subs: ["Vérification créations articles (veille)", "Création article", "MAJ BD articles", "Alerte TEMPO"] },
   { key: "erreurs", label: "Erreurs / Corrections", group: "indirect", color: "#5C2E91",
     subs: ["Erreur de saisie — Tarifs", "Erreur de saisie — BD articles", "Erreur de transmission fournisseur/collègue — Tarifs", "Erreur de transmission fournisseur/collègue — BD articles"] },
   { key: "recherche", label: "Recherche / Info", group: "indirect", color: "#C19C00",
@@ -414,6 +414,7 @@ const PRESETS = [
   { label: "Vérif créations veille", cat: "creations", sub: "Vérification créations articles (veille)" },
   { label: "Créations Articles", cat: "creations", sub: "Création article" },
   { label: "MAJ BD articles", cat: "creations", sub: "MAJ BD articles" },
+  { label: "Alerte TEMPO", cat: "creations", sub: "Alerte TEMPO" },
   { label: "Publication hebdo", cat: "tarifs", sub: "Publication hebdomadaire (lundi)" },
   { label: "MAJ tarifaire frs", cat: "tarifs", sub: "Préparation & MAJ tarifaire fournisseurs (annuelle)" },
   { label: "MAJ tarif dossier", cat: "tarifs", sub: "MAJ tarif — dossier" },
