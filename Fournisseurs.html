@@ -106,6 +106,10 @@ textarea:focus-visible,a:focus-visible{outline:2px solid var(--orange);outline-o
 .ligne.retard{border-left-color:var(--retard)}
 .ligne.surveiller{border-left-color:var(--orange)}
 .ligne.sans-tarif{border-left-color:#B9C4C1}
+.ligne.relance{border-left-color:var(--turquoise)}
+.ligne.relance-muette{border-left-color:var(--retard)}
+.verdict.relance strong{color:var(--abysse)}
+.verdict.relance-muette strong{color:var(--retard)}
 .ligne .principal{flex:1;min-width:190px}
 .ligne .nom{font-family:var(--titre);font-weight:700}
 .ligne .meta{font-size:14px;color:var(--encre-doux)}
@@ -301,6 +305,8 @@ const CHAMPS_FOURNISSEUR = [
    aide:'Échéance prévisible : vous saisissez la date de révision. Surveillance ancienneté : elle est calculée depuis le dernier tarif ou la dernière vérification. Sans surveillance : aucune alerte, pour les fournisseurs dormants.'},
   {k:'periodicite_mois',l:'Périodicité attendue (mois)', t:'number'},
   {k:'prochaine_revision', l:'Prochaine révision attendue', t:'date'},
+  {k:'relance_le',      l:'Demande de tarif envoyée le', t:'date',
+   aide:'Date à laquelle le tarif a été réclamé au fournisseur. Sans effet une fois le nouveau tarif reçu.'},
   {k:'verifie_le',      l:'Dernière vérification', t:'date',
    aide:'Constat que le tarif est toujours d\'actualité. Repousse l\'échéance au même titre qu\'un nouveau tarif.'},
   {k:'contact',         l:'Contact commercial', t:'text'},
@@ -457,6 +463,20 @@ function situation(f){
     }
   }
   const jours = echeance ? ecart(echeance) : null;
+
+  // Une relance ne vaut que tant qu'aucun tarif postérieur n'est arrivé.
+  const relance = jour(f.relance_le);
+  const relanceActive = relance && (!enCours || enCours.debut <= relance)
+    && (!verifie || verifie <= relance);
+  if(relanceActive && (jours === null || jours < 0)){
+    const depuis = -ecart(relance);
+    return {f, versions:v, enCours, verifie, relance, echeance, jours,
+      niveau: depuis > DELAI_RELANCE ? 'relance-muette' : 'relance',
+      verdict: depuis > DELAI_RELANCE
+        ? `Relance sans réponse depuis ${depuis} j`
+        : `Relancé il y a ${depuis === 0 ? 'moins d\'un jour' : depuis + ' j'}`};
+  }
+
   let niveau = 'ok', verdict = 'À jour';
   if(!enCours && !verifie){
     niveau = 'sans-tarif'; verdict = 'Aucun tarif enregistré';
@@ -472,7 +492,9 @@ function situation(f){
   return {f, versions:v, enCours, echeance, jours, niveau, verdict};
 }
 
-const RANG = {retard:0, surveiller:1, 'sans-tarif':2, 'sans-echeance':3, ok:4, 'hors-suivi':5};
+const RANG = {'relance-muette':0, retard:1, surveiller:2, 'sans-tarif':3,
+              'sans-echeance':4, relance:5, ok:6, 'hors-suivi':7};
+const DELAI_RELANCE = 15; // jours avant qu'une relance sans réponse ne remonte
 
 // Un tarif est à traiter s'il s'applique bientôt ou déjà et n'a pas été diffusé.
 const HORS_CIRCUIT = ['NE PAS SAISIR','PAS DE MODIF','NON TRAITE'];
@@ -544,7 +566,8 @@ function vueAlertes(){
   const n = niv => s.filter(x => x.niveau === niv).length;
   const aFaire = D.journal.filter(j => j.statut === 'À faire').length;
   const diff = aTraiter();
-  const aRelancer = s.filter(x => ['retard','surveiller','sans-tarif'].includes(x.niveau));
+  const aRelancer = s.filter(x =>
+    ['relance-muette','retard','surveiller','sans-tarif','relance'].includes(x.niveau));
 
   $('#vue-alertes').innerHTML = `
     <div class="compteurs">
@@ -584,6 +607,12 @@ function vueAlertes(){
       </div>`;}).join('')}</div>`
       : `<div class="vide">Aucun tarif en attente de diffusion.</div>`}`;
   brancherLignes('#vue-alertes');
+  document.querySelectorAll('[data-relance]').forEach(b =>
+    b.addEventListener('click', async e => {
+      e.stopPropagation();
+      const f = D.fournisseurs.find(x => x.id === b.dataset.relance);
+      if(await marquerRelance(f)) vueAlertes();
+    }));
   document.querySelectorAll('[data-verifie]').forEach(b =>
     b.addEventListener('click', async e => {
       e.stopPropagation();
@@ -611,7 +640,9 @@ function ligne(x, options){
       <strong>${esc(x.verdict)}</strong>
       ${x.echeance ? 'échéance au '+x.echeance.toLocaleDateString('fr-FR') : esc(x.f.mode_suivi||'')}
     </div>
-    ${options ? `<button class="btn mini creux" data-verifie="${x.f.id}"
+    ${options ? `<button class="btn mini creux" data-relance="${x.f.id}"
+        title="Le tarif a été réclamé au fournisseur">Demandé</button>
+      <button class="btn mini creux" data-verifie="${x.f.id}"
         title="Aucun nouveau tarif, le tarif en place reste valable">Vérifié</button>` : ''}
   </div>`;
 }
@@ -776,6 +807,7 @@ function dessinerFiche(){
         ${info('Mode de suivi', f.mode_suivi)}
         ${info('Prochaine échéance', s.echeance ? s.echeance.toLocaleDateString('fr-FR') : 'non définie')}
         ${info('Dernière vérification', f.verifie_le ? fr(f.verifie_le) : null)}
+        ${info('Demande de tarif envoyée', f.relance_le ? fr(f.relance_le) : null)}
         ${info('Tarif en vigueur depuis', s.enCours ? s.enCours.debut.toLocaleDateString('fr-FR') : 'aucun')}
         ${info('Flux logistique', f.flux_logistique)}
         ${info('Source du tarif', f.source_tarif)}
@@ -792,6 +824,7 @@ function dessinerFiche(){
         <button class="btn mini" data-add="tarif">Enregistrer un tarif</button>
         <button class="btn mini creux" data-add="condition">Ajouter une condition</button>
         <button class="btn mini creux" data-add="note">Ajouter une note</button>
+        <button class="btn mini creux" id="relance">Demande de tarif envoyée</button>
         <button class="btn mini creux" id="verifie">Tarif vérifié, sans changement</button>
         <button class="btn mini creux" id="modifier">Modifier la fiche</button>
         <button class="btn mini creux" id="fusionner">Fusionner</button>
@@ -863,6 +896,9 @@ function dessinerFiche(){
   $('#modifier').addEventListener('click', () => formulaire({
     titre:'Modifier la fiche', champs:CHAMPS_FOURNISSEUR, table:'fournisseurs',
     valeurs:f, id:f.id, apres:dessinerFiche}));
+  $('#relance').addEventListener('click', async () => {
+    if(await marquerRelance(f)) dessinerFiche();
+  });
   $('#verifie').addEventListener('click', async () => {
     if(await marquerVerifie(f)) dessinerFiche();
   });
@@ -1151,7 +1187,7 @@ async function marquerVerifie(f){
   try{
     const aujourdhui = iso(AUJ());
     await enregistrer('fournisseurs',
-      {verifie_le:aujourdhui, prochaine_revision:iso(cible)}, f.id);
+      {verifie_le:aujourdhui, prochaine_revision:iso(cible), relance_le:null}, f.id);
     await enregistrer('journal', {
       fournisseur_id:f.id, date:aujourdhui, type_evenement:'Note',
       objet:'Tarif vérifié, aucun changement',
@@ -1160,6 +1196,29 @@ async function marquerVerifie(f){
       statut:'Fait'}, null);
     await charger();
     toast('Vérification enregistrée');
+    return true;
+  }catch(e){
+    toast('Enregistrement impossible : ' + e.message);
+    return false;
+  }
+}
+
+/* ---------- demande de tarif adressée au fournisseur ---------- */
+async function marquerRelance(f){
+  if(!confirm(`Enregistrer une demande de tarif auprès de ${f.raison_sociale} ?\n\n`
+    + `La ligne passe en attente de réponse et remontera dans ${DELAI_RELANCE} jours si rien n'arrive.`))
+    return false;
+  try{
+    const aujourdhui = iso(AUJ());
+    const rappel = new Date(AUJ().getTime() + DELAI_RELANCE * 86400000);
+    await enregistrer('fournisseurs', {relance_le:aujourdhui}, f.id);
+    await enregistrer('journal', {
+      fournisseur_id:f.id, date:aujourdhui, type_evenement:'Relance',
+      objet:'Demande de tarif adressée au fournisseur',
+      suite:'Relancer en l\'absence de retour', echeance:iso(rappel),
+      statut:'À faire'}, null);
+    await charger();
+    toast('Demande enregistrée');
     return true;
   }catch(e){
     toast('Enregistrement impossible : ' + e.message);
