@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Suivi de charge</title>
+<title>Suivi de charge &amp; tâches</title>
 <script>
   function cdnFail(name) {
     var el = document.getElementById("error-banner");
@@ -439,6 +439,15 @@ const PRESETS = [
 ];
 const DURATIONS = [5, 10, 15, 30, 45, 60, 90];
 
+/* ======================= STATUTS TÂCHES ======================= */
+const STATUS = [
+  { key: "a_faire", label: "À faire", color: "#5C6F6C" },
+  { key: "en_cours", label: "En cours", color: "#57CBBB" },
+  { key: "fait", label: "Fait", color: "#57CBBB" },
+];
+const statusByKey = (k) => STATUS.find((s) => s.key === k) || STATUS[0];
+const nextStatus = (k) => { const i = STATUS.findIndex((s) => s.key === k); return STATUS[(i + 1) % STATUS.length].key; };
+
 /* ======================= HELPERS ======================= */
 const pad = (n) => String(n).padStart(2, "0");
 const toISO = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -476,7 +485,7 @@ function App() {
   const [projects, setProjects] = useState([]);
   const [newProject, setNewProject] = useState("");
   const [, setTick] = useState(0);
-  const [tab, setTab] = useState("saisie");
+  const [tab, setTab] = useState(() => (typeof window !== "undefined" && window.location.hash === "#taches") ? "taches" : "saisie");
   const [refDate, setRefDate] = useState(new Date());
   const [period, setPeriod] = useState("jour");
   const [historySearch, setHistorySearch] = useState("");
@@ -492,17 +501,30 @@ function App() {
   const [customMin, setCustomMin] = useState("");
   const [editingId, setEditingId] = useState(null);
 
+  /* -------- état Tâches -------- */
+  const [tasks, setTasks] = useState([]);
+  const [quickText, setQuickText] = useState("");
+  const [statusFilter, setStatusFilter] = useState("actives");
+  const [catFilter, setCatFilter] = useState(null);
+  const [urgentOnly, setUrgentOnly] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState(null);
+  const [timeLogTask, setTimeLogTask] = useState(null);
+  const [timeLogMin, setTimeLogMin] = useState(0);
+  const [timeLogCat, setTimeLogCat] = useState("support");
+  const [timeLogSub, setTimeLogSub] = useState(null);
+
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 1600); };
 
   /* -------- load from Supabase -------- */
   const loadAll = useCallback(async () => {
     setLoaded(false);
     try {
-      const [e, s, d, p] = await Promise.all([
+      const [e, s, d, p, tk] = await Promise.all([
         sb.from("entries").select("*").order("date", { ascending: false }),
         sb.from("app_settings").select("*").eq("id", 1).maybeSingle(),
         sb.from("day_logs").select("*"),
         sb.from("projects").select("*").order("name"),
+        sb.from("tasks").select("*").order("created_at", { ascending: false }),
       ]);
       setEntries(e.data || []);
       setSettings(s.data ? { weeklyHours: Number(s.data.weekly_hours) } : { weeklyHours: 35 });
@@ -510,6 +532,7 @@ function App() {
       (d.data || []).forEach((row) => { dl[row.date] = row; });
       setDayLogs(dl);
       setProjects((p.data || []).map((r) => r.name));
+      setTasks(tk.data || []);
     } catch (err) {
       console.error(err);
       setSyncError(true);
@@ -531,13 +554,88 @@ function App() {
     setSubject(""); setComment(""); setDetails(false); setCustomMin(""); setSelSub(null);
   };
 
-  const addRawEntry = async (catKey, subLabel, minutes) => {
+  const addRawEntry = async (catKey, subLabel, minutes, opts = {}) => {
     if (!catKey || !subLabel || !minutes) return;
     const cat = catByKey(catKey);
-    const entry = { id: uid(), date: toISO(new Date()), cat: catKey, sub: subLabel, minutes, subject: "", comment: "Affecté depuis l'écart pointeuse", status: "Terminé", created_at: Date.now() };
+    const entry = { id: uid(), date: toISO(new Date()), cat: catKey, sub: subLabel, minutes, subject: opts.subject || "", comment: opts.comment || "Affecté depuis l'écart pointeuse", status: "Terminé", created_at: Date.now() };
     setEntries((prev) => [entry, ...prev]);
     const { error } = await sb.from("entries").insert(entry);
-    if (error) { console.error(error); setSyncError(true); } else { showToast(`+ ${fmt(minutes)} · ${cat.label} (écart affecté)`); }
+    if (error) { console.error(error); setSyncError(true); } else { showToast(opts.toast || `+ ${fmt(minutes)} · ${cat.label} (écart affecté)`); }
+  };
+
+  /* -------- Tâches : CRUD -------- */
+  const addTask = async () => {
+    const text = quickText.trim();
+    if (!text) return;
+    const task = { id: uid(), text, status: "a_faire", priority: "normale", category: null, created_at: Date.now(), updated_at: Date.now() };
+    setTasks((prev) => [task, ...prev]);
+    setQuickText("");
+    const { error } = await sb.from("tasks").insert(task);
+    if (error) { console.error(error); setSyncError(true); } else { showToast("Tâche ajoutée"); }
+  };
+  const updateTask = async (id, patch) => {
+    const full = { ...patch, updated_at: Date.now() };
+    setTasks((prev) => prev.map((t) => t.id === id ? { ...t, ...full } : t));
+    const { error } = await sb.from("tasks").update(full).eq("id", id);
+    if (error) setSyncError(true);
+  };
+  const deleteTask = async (id) => {
+    setTasks((prev) => prev.filter((t) => t.id !== id));
+    const { error } = await sb.from("tasks").delete().eq("id", id);
+    if (error) setSyncError(true);
+  };
+  const togglePriority = (t) => updateTask(t.id, { priority: t.priority === "urgente" ? "normale" : "urgente" });
+  const setTaskCategory = (t, cat) => updateTask(t.id, { category: cat || null });
+  const setTaskText = (t, text) => updateTask(t.id, { text });
+
+  /* -------- Tâches : cycle de statut, lié au suivi de temps -------- */
+  const requestStatusCycle = (t) => {
+    if (t.status === "a_faire") { updateTask(t.id, { status: "en_cours" }); return; }
+    if (t.status === "fait") { updateTask(t.id, { status: "a_faire" }); return; }
+    // en_cours -> ouverture du formulaire de bascule vers le suivi de temps
+    setTimeLogCat(t.category || "support");
+    setTimeLogSub(catByKey(t.category || "support").subs[0]);
+    setTimeLogMin(15);
+    setTimeLogTask(t);
+  };
+  const confirmTimeLog = () => {
+    if (!timeLogTask) return;
+    if (timeLogMin > 0) {
+      addRawEntry(timeLogCat, timeLogSub, timeLogMin, { subject: timeLogTask.text, comment: "Depuis une tâche terminée", toast: `Tâche terminée · +${fmt(timeLogMin)} · ${catByKey(timeLogCat).label}` });
+    }
+    updateTask(timeLogTask.id, { status: "fait", category: timeLogTask.category || timeLogCat });
+    setTimeLogTask(null);
+  };
+  const skipTimeLog = () => {
+    if (!timeLogTask) return;
+    updateTask(timeLogTask.id, { status: "fait" });
+    setTimeLogTask(null);
+  };
+
+  const untriagedCount = useMemo(() => tasks.filter((t) => !t.category && t.status !== "fait").length, [tasks]);
+  const visibleTasks = useMemo(() => {
+    let list = tasks;
+    if (statusFilter === "actives") list = list.filter((t) => t.status !== "fait");
+    else if (statusFilter !== "toutes") list = list.filter((t) => t.status === statusFilter);
+    if (catFilter === "none") list = list.filter((t) => !t.category);
+    else if (catFilter) list = list.filter((t) => t.category === catFilter);
+    if (urgentOnly) list = list.filter((t) => t.priority === "urgente");
+    return [...list].sort((a, b) => {
+      const sOrder = { a_faire: 0, en_cours: 1, fait: 2 };
+      if (sOrder[a.status] !== sOrder[b.status]) return sOrder[a.status] - sOrder[b.status];
+      if ((a.priority === "urgente") !== (b.priority === "urgente")) return a.priority === "urgente" ? -1 : 1;
+      return b.created_at - a.created_at;
+    });
+  }, [tasks, statusFilter, catFilter, urgentOnly]);
+  const exportTasksCSV = () => {
+    const headers = ["texte","statut","priorite","categorie","cree_le"];
+    const escape = (v) => `"${String(v ?? "").replace(/"/g,'""')}"`;
+    const rows = tasks.map((t) => [t.text, statusByKey(t.status).label, t.priority, t.category ? catByKey(t.category)?.label || t.category : "", new Date(t.created_at).toLocaleDateString("fr-FR")].map(escape).join(";"));
+    const csv = "\uFEFF" + [headers.join(";"), ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = `taches-${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
   };
 
   const deleteEntry = async (id) => {
@@ -758,12 +856,13 @@ function App() {
       )}
       <div className="flex" style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"18px 20px",borderBottom:`1px solid ${C.border}`}}>
         <div>
-          <div className="disp" style={{fontSize:20,fontWeight:700}}>Suivi de charge</div>
-          <div className="mono" style={{fontSize:11,color:C.faint,marginTop:2}}>charge visible + charge invisible</div>
+          <div className="disp" style={{fontSize:20,fontWeight:700}}>Suivi de charge & tâches</div>
+          <div className="mono" style={{fontSize:11,color:C.faint,marginTop:2}}>charge visible + charge invisible + tâches</div>
         </div>
         <div style={{display:"flex",gap:8}}>
           <TabBtn active={tab==="saisie"} onClick={()=>setTab("saisie")}>Saisie</TabBtn>
           <TabBtn active={tab==="dashboard"} onClick={()=>setTab("dashboard")}>Tableau de bord</TabBtn>
+          <TabBtn active={tab==="taches"} onClick={()=>setTab("taches")}>Tâches{untriagedCount>0?` (${untriagedCount})`:""}</TabBtn>
           <button onClick={()=>setShowSettings(s=>!s)} style={{padding:8,borderRadius:3,border:`1px solid ${C.border}`,background:C.panel,cursor:"pointer"}}>⚙️</button>
         </div>
       </div>
@@ -798,7 +897,7 @@ function App() {
         </div>
       )}
 
-      {tab === "saisie" ? (
+      {tab === "saisie" && (
         <div style={{padding:20,maxWidth:900,margin:"0 auto"}}>
           <TimeClock log={todayLog} onChange={(l)=>persistDayLog(todayIso,l)} todayTotal={todayTotal} onLogEcart={addRawEntry} />
           <DayGauge todayTotal={todayTotal} gaugeMax={gaugeMax} todayEntries={todayEntries} dayTheoretical={dayTheoretical} />
@@ -895,7 +994,9 @@ function App() {
               </div>}
           </Section>
         </div>
-      ) : (
+      )}
+
+      {tab === "dashboard" && (
         <div style={{padding:20,maxWidth:1000,margin:"0 auto"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12,marginBottom:16}}>
             <div style={{display:"flex",gap:4,background:C.panel,borderRadius:3,padding:3,border:`1px solid ${C.border}`}}>
@@ -967,6 +1068,98 @@ function App() {
               {!historySearch.trim() && periodEntries.length===0 && agg.total===0 && <div style={{color:C.faint,fontSize:13,padding:"20px 0",textAlign:"center"}}>Aucune saisie sur cette période.</div>}
             </div>
           </Panel>
+        </div>
+      )}
+
+      {tab === "taches" && (
+        <div style={{padding:20,maxWidth:800,margin:"0 auto"}}>
+          <div style={{display:"flex",gap:8,marginBottom:16}}>
+            <input
+              value={quickText}
+              onChange={(e)=>setQuickText(e.target.value)}
+              onKeyDown={(e)=>{if(e.key==="Enter") addTask();}}
+              placeholder="Note ce à quoi tu penses… (Entrée pour ajouter)"
+              style={{flex:1,background:C.panel,border:`1px solid ${C.border2}`,borderRadius:3,padding:"12px 14px",fontSize:15,color:C.text}}
+            />
+            <button onClick={addTask} style={{padding:"0 20px",borderRadius:3,border:"none",background:C.abysse,color:"#FFFFFF",fontSize:14,fontWeight:600,cursor:"pointer"}}>
+              Ajouter
+            </button>
+          </div>
+
+          {untriagedCount > 0 && (
+            <button onClick={()=>{setCatFilter("none");setStatusFilter("actives");}} className="chip" style={{
+              display:"flex",alignItems:"center",gap:8,width:"100%",textAlign:"left",marginBottom:16,padding:"10px 14px",borderRadius:3,
+              border:"1px solid #F8AC1655",background:"#F8AC1615",color:"#8A5D00",fontSize:13,cursor:"pointer"}}>
+              🗂️ <b>{untriagedCount}</b> tâche{untriagedCount>1?"s":""} à trier (sans catégorie)
+            </button>
+          )}
+
+          <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+            {[["actives","Actives"],["a_faire","À faire"],["en_cours","En cours"],["fait","Fait"],["toutes","Toutes"]].map(([k,label]) => (
+              <button key={k} onClick={()=>setStatusFilter(k)} style={{padding:"6px 12px",borderRadius:3,fontSize:12,
+                border:`1px solid ${statusFilter===k?C.abysse:C.border2}`, background:statusFilter===k?`${C.abysse}15`:C.panel, color:statusFilter===k?C.abysse:C.muted, cursor:"pointer"}}>{label}</button>
+            ))}
+            <div style={{flex:1}} />
+            <button onClick={()=>setUrgentOnly(u=>!u)} style={{padding:"6px 12px",borderRadius:3,fontSize:12,
+              border:`1px solid ${urgentOnly?"#A33327":C.border2}`, background:urgentOnly?"#A3332718":C.panel, color:urgentOnly?"#A33327":C.muted, cursor:"pointer"}}>🔴 Urgentes</button>
+          </div>
+
+          <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+            <button onClick={()=>setCatFilter(null)} style={{padding:"5px 10px",borderRadius:3,fontSize:11,
+              border:`1px solid ${!catFilter?C.abysse:C.border2}`, background:!catFilter?`${C.abysse}15`:C.panel, color:!catFilter?C.abysse:C.muted, cursor:"pointer"}}>Toutes catégories</button>
+            {CATS.map((c) => (
+              <button key={c.key} onClick={()=>setCatFilter(c.key)} style={{padding:"5px 10px",borderRadius:3,fontSize:11,
+                border:`1px solid ${catFilter===c.key?c.color:C.border2}`, background:catFilter===c.key?`${c.color}18`:C.panel, color:catFilter===c.key?c.color:C.muted, cursor:"pointer"}}>{c.label}</button>
+            ))}
+            <button onClick={()=>setCatFilter("none")} style={{padding:"5px 10px",borderRadius:3,fontSize:11,
+              border:`1px solid ${catFilter==="none"?C.muted:C.border2}`, background:catFilter==="none"?`${C.muted}18`:C.panel, color:catFilter==="none"?C.text:C.muted, cursor:"pointer"}}>Sans catégorie</button>
+          </div>
+
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {visibleTasks.length === 0 && <div style={{color:C.faint,fontSize:13,textAlign:"center",padding:"30px 0"}}>Aucune tâche ici.</div>}
+            {visibleTasks.map((t) => (
+              <TaskRow key={t.id} t={t} editing={editingTaskId===t.id}
+                onCycleStatus={()=>requestStatusCycle(t)} onTogglePriority={()=>togglePriority(t)}
+                onSetCategory={(cat)=>setTaskCategory(t,cat)} onDelete={()=>deleteTask(t.id)}
+                onEditStart={()=>setEditingTaskId(t.id)} onEditSave={(text)=>{setTaskText(t,text);setEditingTaskId(null);}} onEditCancel={()=>setEditingTaskId(null)} />
+            ))}
+          </div>
+
+          <div style={{marginTop:24,paddingTop:16,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span className="mono" style={{fontSize:11,color:C.faint}}>{tasks.length} tâche(s) au total</span>
+            <button onClick={exportTasksCSV} style={{fontSize:12,color:C.abysse,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:3,padding:"6px 12px",cursor:"pointer"}}>📊 Exporter en CSV</button>
+          </div>
+        </div>
+      )}
+
+      {timeLogTask && (
+        <div style={{position:"fixed",inset:0,background:"rgba(22,48,46,.45)",display:"flex",alignItems:"center",justifyContent:"center",padding:20,zIndex:50}}>
+          <div style={{background:C.panel,borderRadius:4,width:"min(420px,94vw)",overflow:"hidden"}}>
+            <div style={{background:C.abysse,color:"#fff",padding:"14px 18px",fontWeight:700}}>Terminer la tâche</div>
+            <div style={{padding:18}}>
+              <div style={{fontSize:14,color:C.text,marginBottom:14}}>{timeLogTask.text}</div>
+              <div style={{fontSize:12,color:C.muted,marginBottom:6}}>Combien de temps y as-tu passé ?</div>
+              <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+                <input type="number" min="1" value={timeLogMin} onChange={(e)=>setTimeLogMin(Math.max(0,parseInt(e.target.value)||0))} className="mono"
+                  style={{width:70,padding:"8px 8px",borderRadius:3,border:`1px solid ${C.border2}`,fontSize:14}} />
+                <span style={{alignSelf:"center",fontSize:12,color:C.muted}}>minutes, catégorisées en</span>
+              </div>
+              <div style={{display:"flex",gap:8,marginBottom:18,flexWrap:"wrap"}}>
+                <select value={timeLogCat} onChange={(e)=>{const c=e.target.value;setTimeLogCat(c);setTimeLogSub(catByKey(c).subs[0]);}}
+                  style={{flex:"1 1 140px",padding:"8px 8px",borderRadius:3,border:`1px solid ${C.border2}`,fontSize:13}}>
+                  {CATS.map((c)=><option key={c.key} value={c.key}>{c.label}</option>)}
+                </select>
+                <select value={timeLogSub} onChange={(e)=>setTimeLogSub(e.target.value)}
+                  style={{flex:"1 1 140px",padding:"8px 8px",borderRadius:3,border:`1px solid ${C.border2}`,fontSize:13}}>
+                  {catByKey(timeLogCat).subs.map((s)=><option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+                <button onClick={skipTimeLog} style={{fontSize:12,color:C.muted,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:3,padding:"8px 12px",cursor:"pointer"}}>Terminer sans compter de temps</button>
+                <button onClick={confirmTimeLog} style={{fontSize:13,fontWeight:600,color:"#fff",background:C.abysse,border:"none",borderRadius:3,padding:"8px 16px",cursor:"pointer"}}>Valider</button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1105,6 +1298,46 @@ function DayGauge({todayTotal,gaugeMax,todayEntries,dayTheoretical}) {
       {CATS.map((c) => { const m=byCat[c.key]||0; if(!m) return null; return <div key={c.key} style={{width:`${(m/gaugeMax)*100}%`,background:c.color}} title={`${c.label}: ${fmt(m)}`} />; })}
     </div>
   </div>;
+}
+function TaskRow({t,editing,onCycleStatus,onTogglePriority,onSetCategory,onDelete,onEditStart,onEditSave,onEditCancel}) {
+  const s = statusByKey(t.status);
+  const cat = t.category ? catByKey(t.category) : null;
+  const [draft,setDraft] = useState(t.text);
+  const isDone = t.status === "fait";
+
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:C.panel,borderRadius:3,border:`1px solid ${C.border}`}}>
+      <button onClick={onCycleStatus} title="Changer le statut" style={{
+        width:20,height:20,borderRadius:3,border:`2px solid ${s.color}`,background:isDone?s.color:"transparent",
+        display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",padding:0}}>
+        {isDone && <span style={{color:"#16302E",fontSize:12,lineHeight:1,fontWeight:700}}>✓</span>}
+      </button>
+
+      <button onClick={onTogglePriority} title="Marquer urgent" style={{background:"none",border:"none",cursor:"pointer",fontSize:15,opacity:t.priority==="urgente"?1:0.25,flexShrink:0,padding:0}}>
+        🔴
+      </button>
+
+      <div style={{flex:1,minWidth:0}}>
+        {editing ? (
+          <input autoFocus value={draft} onChange={(e)=>setDraft(e.target.value)}
+            onKeyDown={(e)=>{if(e.key==="Enter") onEditSave(draft); if(e.key==="Escape") onEditCancel();}}
+            onBlur={()=>onEditSave(draft)}
+            style={{width:"100%",background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:3,padding:"4px 6px",fontSize:14,color:C.text}} />
+        ) : (
+          <span onClick={onEditStart} style={{fontSize:14,cursor:"text",textDecoration:isDone?"line-through":"none",color:isDone?C.faint:C.text}}>{t.text}</span>
+        )}
+      </div>
+
+      <select value={t.category||""} onChange={(e)=>onSetCategory(e.target.value)} style={{
+        fontSize:11,padding:"4px 6px",borderRadius:3,border:`1px solid ${cat?cat.color+"55":C.border2}`,
+        background:cat?`${cat.color}12`:C.panel2, color:cat?cat.color:C.faint, cursor:"pointer",maxWidth:130}}>
+        <option value="">— catégorie —</option>
+        {CATS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+      </select>
+
+      <button onClick={onDelete} style={{background:"none",border:"none",cursor:"pointer",padding:4}} title="Supprimer">🗑️</button>
+    </div>
+  );
 }
 function TimeClock({log,onChange,todayTotal,onLogEcart}) {
   const [ecartOpen, setEcartOpen] = useState(false);
