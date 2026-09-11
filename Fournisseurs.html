@@ -351,7 +351,8 @@ const CHAMPS_TARIF = [
 const CHAMPS_CONDITION = [
   {k:'type_condition', l:'Type de condition', t:'select', o:CONDITIONS_T, req:true},
   {k:'valeur',         l:'Valeur', t:'number'},
-  {k:'unite',          l:'Unité', t:'select', o:['%','€']},
+  {k:'unite',          l:'Unité', t:'select', o:['%','€','camion','palette','tonne'],
+   aide:'Pour un franco exprimé en volume, saisir la fraction dans Valeur : 0,5 et camion pour un demi-camion.'},
   {k:'date_debut',     l:'Date de début', t:'date'},
   {k:'date_fin',       l:'Date de fin', t:'date', aide:'Laisser vide si la condition court sans terme.'},
   {k:'base_calcul',    l:'Base de calcul', t:'text'},
@@ -444,23 +445,50 @@ async function charger(){
 
 // Versions tarifaires d'un fournisseur, triées, avec fin déduite et statut.
 function versions(fid){
+  // À date d'application égale, la saisie la plus récente fait foi : c'est une correction.
   const v = D.tarifs.filter(t => t.fournisseur_id === fid)
-    .sort((a,b) => a.date_application.localeCompare(b.date_application));
+    .sort((a,b) => a.date_application.localeCompare(b.date_application)
+                || (a.created_at || '').localeCompare(b.created_at || ''));
   return v.map((t,i) => {
     const debut = jour(t.date_application);
-    const suiv  = v[i+1] ? jour(v[i+1].date_application) : null;
-    const fin   = suiv ? new Date(suiv.getTime()-86400000) : null;
+    const apres = v.slice(i+1);
+    // Seule une version postérieure clôt une période. Une correction du même jour la remplace.
+    const remplacee = apres.some(x => x.date_application === t.date_application);
+    const suivante  = apres.find(x => x.date_application > t.date_application);
+    const fin = suivante ? new Date(jour(suivante.date_application).getTime() - 86400000) : null;
     let statut = 'Périmé';
-    if(debut > AUJ())                    statut = 'À venir';
-    else if(!fin || fin >= AUJ())        statut = 'En vigueur';
-    return {...t, debut, fin, statut};
+    if(remplacee)                 statut = 'Remplacé';
+    else if(debut > AUJ())        statut = 'À venir';
+    else if(!fin || fin >= AUJ()) statut = 'En vigueur';
+    return {...t, debut, fin, statut, remplacee};
   });
+}
+
+// Versions annulées par une correction portant la même date d'application.
+function idsRemplaces(){
+  const parFournisseur = {};
+  D.tarifs.forEach(t => {
+    if(!parFournisseur[t.fournisseur_id]) parFournisseur[t.fournisseur_id] = [];
+    parFournisseur[t.fournisseur_id].push(t);
+  });
+  const ids = new Set();
+  for(const lot of Object.values(parFournisseur)){
+    const retenu = {};
+    for(const t of lot){
+      const k = t.date_application;
+      if(!retenu[k]){ retenu[k] = t; continue; }
+      const recent = (t.created_at || '') > (retenu[k].created_at || '') ? t : retenu[k];
+      ids.add((recent === t ? retenu[k] : t).id);
+      retenu[k] = recent;
+    }
+  }
+  return ids;
 }
 
 // Situation d'un fournisseur : dernier tarif, échéance, alerte.
 function situation(f){
   const v = versions(f.id);
-  const enCours = [...v].reverse().find(x => x.debut <= AUJ()) || null;
+  const enCours = [...v].reverse().find(x => x.debut <= AUJ() && !x.remplacee) || null;
   const verifie = jour(f.verifie_le);
 
   if(f.mode_suivi === 'Sans surveillance')
@@ -522,10 +550,12 @@ const HORS_CIRCUIT = ['NE PAS SAISIR','PAS DE MODIF','NON TRAITE'];
 function enCircuit(condition){
   const limite = new Date(AUJ().getTime() + 15*86400000);
   const noms = Object.fromEntries(D.fournisseurs.map(f => [f.id, f]));
+  const remplaces = idsRemplaces();
   return D.tarifs
     .filter(t => {
       const d0 = jour(t.date_application);
       if(!d0 || d0 > limite) return false;
+      if(remplaces.has(t.id)) return false;
       if(t.diffusion) return false;
       if(HORS_CIRCUIT.includes(t.etat)) return false;
       return condition(t);
@@ -926,12 +956,14 @@ function dessinerFiche(){
     <section class="bloc">
       <div class="bloc-titre"><h2>Versions tarifaires</h2><span class="compte">${s.versions.length}</span></div>
       ${s.versions.length ? `<div class="chrono">${[...s.versions].reverse().map(v => `
-        <div class="jalon ${v.statut==='En vigueur'?'vigueur':v.statut==='À venir'?'venir':''}">
+        <div class="jalon ${v.statut==='En vigueur'?'vigueur':v.statut==='À venir'?'venir':''}"
+             ${v.remplacee ? 'style="opacity:.6"' : ''}>
           <div class="quand">${v.debut.toLocaleDateString('fr-FR')}
-            <span class="etiq ${v.statut==='À venir'?'venir':v.statut==='Périmé'?'perime':''}">${v.statut}</span></div>
+            <span class="etiq ${v.statut==='À venir'?'venir':v.statut==='En vigueur'?'':'perime'}">${v.statut}</span></div>
           <div class="quoi">${esc(v.reference || 'Version sans référence')}
             ${v.evolution!=null ? ` · ${v.evolution>0?'+':''}${v.evolution} %` : ''}
-            ${v.fin ? ` · jusqu'au ${v.fin.toLocaleDateString('fr-FR')}` : ''}</div>
+            ${v.remplacee ? ' · corrigé par une saisie postérieure'
+              : v.fin ? ` · jusqu'au ${v.fin.toLocaleDateString('fr-FR')}` : ''}</div>
           <div class="note">Reçu le ${fr(v.date_reception)}${v.source?' · '+esc(v.source):''}
             ${v.lien ? ` · <a href="${esc(v.lien)}" target="_blank" rel="noopener">document</a>` : ''}
             ${v.fin_annoncee ? `<br>Fin annoncée par le fournisseur : ${fr(v.fin_annoncee)}` : ''}
@@ -1557,6 +1589,27 @@ function vueBord(){
 }
 
 /* =====================================================================
+   6 quater. États déduits de l'avancement
+   ===================================================================== */
+
+// Le circuit de traitement, dans l'ordre. Un état ne recule jamais tout seul.
+const ORDRE_ETAT = ['A FAIRE', 'EN ATT MARION', 'A SAISIR', 'SAISI'];
+// États décidés à la main, qui expriment un choix et non une étape.
+const ETAT_FIGE = ['PAS DE MODIF', 'NE PAS SAISIR', 'NON TRAITE', 'ATT FRS TARIFS', 'ATT BAN'];
+
+function etatAutomatique(data, etatPrecedent){
+  if(ETAT_FIGE.includes(data.etat)) return null;            // choix assumé, on n'y touche pas
+  if(data.etat && data.etat !== (etatPrecedent || null)) return null; // modifié à la main dans ce formulaire
+  const cible = data.maj_sap     ? 'SAISI'
+              : data.retour_resp ? 'A SAISIR'
+              : data.envoi_resp  ? 'EN ATT MARION'
+              : null;
+  if(!cible) return null;
+  if(ORDRE_ETAT.indexOf(cible) <= ORDRE_ETAT.indexOf(data.etat)) return null;
+  return cible;
+}
+
+/* =====================================================================
    7. Formulaire générique
    ===================================================================== */
 function formulaire({titre, champs, table, valeurs={}, id=null, fixe={}, apres}){
@@ -1587,11 +1640,17 @@ function formulaire({titre, champs, table, valeurs={}, id=null, fixe={}, apres})
       if(c.req && !v){ toast('Le champ « '+c.l+' » est obligatoire'); $('#c-'+c.k).focus(); return; }
       data[c.k] = (c.t === 'number') ? nb(v) : (v === '' ? null : v);
     }
+    let deduit = null;
+    if(table === 'tarifs'){
+      deduit = etatAutomatique(data, valeurs.etat);
+      if(deduit) data.etat = deduit;
+    }
     try{
       await enregistrer(table, data, id);
       await charger();
       $('#modal').close();
-      toast(id ? 'Modifications enregistrées' : 'Enregistré');
+      toast(deduit ? 'Enregistré, état passé à ' + deduit
+                   : (id ? 'Modifications enregistrées' : 'Enregistré'));
       apres && apres();
     }catch(e){
       toast(messageErreur(e));
