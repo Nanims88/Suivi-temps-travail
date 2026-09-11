@@ -557,7 +557,7 @@ function App() {
   const addRawEntry = async (catKey, subLabel, minutes, opts = {}) => {
     if (!catKey || !subLabel || !minutes) return;
     const cat = catByKey(catKey);
-    const entry = { id: uid(), date: toISO(new Date()), cat: catKey, sub: subLabel, minutes, subject: opts.subject || "", comment: opts.comment || "Affecté depuis l'écart pointeuse", status: "Terminé", created_at: Date.now() };
+    const entry = { id: uid(), date: toISO(new Date()), cat: catKey, sub: subLabel, minutes, subject: opts.subject || "", comment: opts.comment || "", status: "Terminé", created_at: Date.now() };
     setEntries((prev) => [entry, ...prev]);
     const { error } = await sb.from("entries").insert(entry);
     if (error) { console.error(error); setSyncError(true); } else { showToast(opts.toast || `+ ${fmt(minutes)} · ${cat.label} (écart affecté)`); }
