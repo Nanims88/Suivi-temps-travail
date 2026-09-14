@@ -564,8 +564,11 @@ function enCircuit(condition){
     .filter(t => t.frs)
     .sort((a,b) => a.debut - b.debut);
 }
-const aSaisir   = () => enCircuit(t => !t.maj_sap);
+// Attentes qui ne dépendent pas de vous : rien à saisir tant qu'elles courent.
+const ETAT_TIERS = ['EN ATT MARION', 'ATT FRS TARIFS', 'ATT BAN'];
+const aSaisir   = () => enCircuit(t => !t.maj_sap && !ETAT_TIERS.includes(t.etat));
 const aDiffuser = () => enCircuit(t => !!t.maj_sap);
+const chezUnTiers = () => enCircuit(t => !t.maj_sap && ETAT_TIERS.includes(t.etat));
 
 // Résumé lisible du circuit de traitement d'une version tarifaire.
 function circuit(v){
@@ -619,7 +622,7 @@ function vueAlertes(){
   const s = situations();
   const n = niv => s.filter(x => x.niveau === niv).length;
   const aFaire = D.journal.filter(j => j.statut === 'À faire').length;
-  const saisie = aSaisir(), diffusion = aDiffuser();
+  const saisie = aSaisir(), diffusion = aDiffuser(), tiers = chezUnTiers();
   const NIVEAUX_LISTE = ['relance-muette','retard','surveiller','sans-tarif','relance'];
   const filtre = UI.alerte;
   const surTarifs = filtre === 'saisie' || filtre === 'diffusion';
@@ -672,6 +675,7 @@ function vueAlertes(){
       ${compteur('surveiller', n('surveiller'), 'échéances sous 30 jours', 'surveiller')}
       ${compteur('sans-tarif', n('sans-tarif'), 'aucun tarif enregistré', '')}
       ${compteur('relance', n('relance') + n('relance-muette'), 'demandes en attente', 'demande')}
+      ${compteur('tiers', tiers.length, "en attente d'un tiers", 'demande')}
       ${compteur('saisie', saisie.length, 'tarifs à saisir', 'saisie')}
       ${compteur('diffusion', diffusion.length, 'tarifs à diffuser', 'diffusion')}
       ${compteur('actions', aFaire, 'notes à traiter', 'actions')}
@@ -709,6 +713,7 @@ function vueAlertes(){
 
   const basculer = cle => {
     if(cle === 'actions'){ afficher('actions'); return; }
+    if(cle === 'tiers'){ UI.etat = '_attente'; afficher('actions'); return; }
     UI.alerte = (UI.alerte === cle) ? null : cle;
     vueAlertes();
   };
