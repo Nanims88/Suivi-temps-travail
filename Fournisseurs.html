@@ -89,6 +89,10 @@ textarea:focus-visible,a:focus-visible{outline:2px solid var(--orange);outline-o
 .compteur.diffusion{border-left:4px solid var(--abysse)}
 .compteur.demande{border-left:4px solid var(--turquoise)}
 .compteur.saisie{border-left:4px solid #8A5D00}
+.delta{font-size:13px;font-weight:700}
+.delta.mieux{color:var(--abysse)}
+.delta.moins{color:var(--retard)}
+.delta.neutre{color:var(--encre-doux);font-weight:400}
 .compteur[data-filtre]{cursor:pointer;transition:none}
 .compteur[data-filtre]:hover{background:#F7FAF9;border-color:var(--turquoise)}
 .compteur.actif{background:#E4F2EE;border-color:var(--abysse);box-shadow:inset 0 0 0 1px var(--abysse)}
@@ -1471,25 +1475,70 @@ function histogramme(paires, titre){
   </svg>`;
 }
 
-function vueBord(){
-  const [a, b] = bornes();
-  const noms = Object.fromEntries(D.fournisseurs.map(f => [f.id, f]));
-
+// Tous les chiffres d'une période, pour pouvoir la comparer à une autre.
+function indicateurs(a, b){
   const recus    = D.tarifs.filter(t => dansPeriode(t.date_reception, a, b));
   const saisis   = D.tarifs.filter(t => dansPeriode(t.maj_sap, a, b));
   const diffuses = D.tarifs.filter(t => dansPeriode(t.date_diffusion, a, b));
-
-  const traitement = listeEcarts(saisis, 'maj_sap', 'date_reception');
   const parRapport = listeEcarts(saisis, 'maj_sap', 'date_application');
-  const arbitrage  = listeEcarts(D.tarifs.filter(t => dansPeriode(t.retour_resp, a, b)),
-                                 'retour_resp', 'envoi_resp');
-  const diffusion  = listeEcarts(diffuses, 'date_diffusion', 'maj_sap');
-  const enRetard   = parRapport.filter(v => v > 0).length;
+  const cycles = diffuses.map(t => cyclesManques(t.maj_sap, t.date_diffusion))
+    .filter(v => v !== null);
+  return {
+    recus, saisis, diffuses, parRapport, cycles,
+    nRecus:recus.length, nSaisis:saisis.length, nDiffuses:diffuses.length,
+    traitement: mediane(listeEcarts(saisis, 'maj_sap', 'date_reception')),
+    arbitrage: mediane(listeEcarts(D.tarifs.filter(t => dansPeriode(t.retour_resp, a, b)),
+                                   'retour_resp', 'envoi_resp')),
+    brutDiffusion: mediane(listeEcarts(diffuses, 'date_diffusion', 'maj_sap')),
+    application: mediane(parRapport),
+    partRetard: parRapport.length
+      ? Math.round(100 * parRapport.filter(v => v > 0).length / parRapport.length) : null,
+    partLundi: cycles.length
+      ? Math.round(100 * cycles.filter(v => v === 0).length / cycles.length) : null,
+    nTraitement: listeEcarts(saisis, 'maj_sap', 'date_reception').length,
+  };
+}
+
+// Référence de comparaison. Pour une année civile, la même fenêtre un an plus tôt,
+// sinon la période de même durée immédiatement antérieure.
+function periodePrecedente(a, b){
+  if(UI.periode === 'tout') return null;
+  const fin = new Date(Math.min(b, AUJ()));
+  if(fin <= a) return null;
+  if(UI.periode === 'annee' || UI.periode === 'precedente'){
+    const recule = d => { const r = new Date(d); r.setFullYear(r.getFullYear() - 1); return r; };
+    return [recule(a), recule(fin)];
+  }
+  const duree = fin - a;
+  return [new Date(a.getTime() - duree - 86400000), new Date(a.getTime() - 86400000)];
+}
+
+// sens : 'bas' si une baisse est une bonne nouvelle, 'haut' si c'est l'inverse.
+function ecartIndic(actuel, avant, sens, unite){
+  if(actuel === null || avant === null || avant === undefined) return '';
+  const d = actuel - avant;
+  const suffixe = unite === 'j' ? ' j' : unite === 'pts' ? ' %' : '';
+  if(d === 0) return `<span class="delta neutre">stable vs ${avant}${suffixe}</span>`;
+  const mieux = sens === 'bas' ? d < 0 : sens === 'haut' ? d > 0 : null;
+  const classe = mieux === null ? 'neutre' : (mieux ? 'mieux' : 'moins');
+  const ampleur = unite === 'pts' ? Math.abs(d) + ' pts'
+                : unite === 'j'   ? Math.abs(d) + ' j'
+                : Math.abs(d);
+  return `<span class="delta ${classe}">${d > 0 ? '+' : '-'}${ampleur} vs ${avant}${suffixe}</span>`;
+}
+
+function vueBord(){
+  const [a, b] = bornes();
+  const noms = Object.fromEntries(D.fournisseurs.map(f => [f.id, f]));
+  const ind = indicateurs(a, b);
+  const pp = periodePrecedente(a, b);
+  const av = pp ? indicateurs(pp[0], pp[1]) : {};
 
   const j = v => v === null ? '-' : (v > 0 ? v + ' j' : v === 0 ? 'le jour même' : Math.abs(v) + ' j d\'avance');
-  const carte = (valeur, libelle, detail, classe) =>
+  const carte = (valeur, libelle, detail, classe, comparaison) =>
     `<div class="compteur ${classe||''}"><span class="n">${valeur}</span>
        <span class="l">${libelle}</span>
+       ${comparaison ? `<span class="l" style="display:block;margin-top:3px">${comparaison}</span>` : ''}
        ${detail ? `<span class="l" style="display:block;margin-top:3px;opacity:.8">${detail}</span>` : ''}</div>`;
 
   // Regroupement mensuel, ou annuel au delà de deux ans.
@@ -1502,15 +1551,15 @@ function vueBord(){
       cles.push([c, d.toLocaleDateString('fr-FR', {month:'short', year:'2-digit'})]);
       compte[c] = 0;
     }
-    saisis.forEach(t => { const c = t.maj_sap.slice(0,7); if(c in compte) compte[c]++; });
+    ind.saisis.forEach(t => { const c = t.maj_sap.slice(0,7); if(c in compte) compte[c]++; });
   } else {
     for(let an = a.getFullYear(); an <= b.getFullYear(); an++){
       cles.push([String(an), String(an)]); compte[an] = 0;
     }
-    saisis.forEach(t => { const c = t.maj_sap.slice(0,4); if(c in compte) compte[c]++; });
+    ind.saisis.forEach(t => { const c = t.maj_sap.slice(0,4); if(c in compte) compte[c]++; });
   }
 
-  const lents = saisis
+  const lents = ind.saisis
     .map(t => ({t, d:ecartJours(t.maj_sap, t.date_reception)}))
     .filter(x => x.d !== null)
     .sort((x,y) => y.d - x.d).slice(0, 10);
@@ -1528,37 +1577,41 @@ function vueBord(){
         <input type="date" id="p-debut" value="${UI.debut||''}">
         <input type="date" id="p-fin" value="${UI.fin||''}">` : ''}
       <span style="align-self:center;color:var(--encre-doux)">
-        du ${a.toLocaleDateString('fr-FR')} au ${b.toLocaleDateString('fr-FR')}</span>
+        du ${a.toLocaleDateString('fr-FR')} au ${b.toLocaleDateString('fr-FR')}${pp
+          ? ` · comparé au ${pp[0].toLocaleDateString('fr-FR')} - ${pp[1].toLocaleDateString('fr-FR')}`
+          : ' · sans comparaison possible'}</span>
     </div>
 
     <div class="bloc-titre"><h2>Volumes</h2></div>
     <div class="compteurs">
-      ${carte(recus.length, 'tarifs reçus', null, 'demande')}
-      ${carte(saisis.length, 'mises à jour SAP', null, 'saisie')}
-      ${carte(diffuses.length, 'diffusions', null, 'diffusion')}
+      ${carte(ind.nRecus, 'tarifs reçus', null, 'demande',
+              ecartIndic(ind.nRecus, av.nRecus, null))}
+      ${carte(ind.nSaisis, 'mises à jour SAP', null, 'saisie',
+              ecartIndic(ind.nSaisis, av.nSaisis, null))}
+      ${carte(ind.nDiffuses, 'diffusions', null, 'diffusion',
+              ecartIndic(ind.nDiffuses, av.nDiffuses, null))}
     </div>
 
-    <div class="bloc-titre" style="margin-top:26px"><h2>Délais médians</h2></div>
+    <div class="bloc-titre" style="margin-top:26px"><h2>Délais et tenue du circuit</h2></div>
     <div class="compteurs">
-      ${carte(j(mediane(traitement)), 'réception vers SAP', `${traitement.length} tarifs mesurés`)}
-      ${carte(j(mediane(arbitrage)), 'envoi vers retour responsable', `${arbitrage.length} allers-retours`)}
-      ${(() => {
-        const cycles = diffuses.map(t => cyclesManques(t.maj_sap, t.date_diffusion))
-          .filter(v => v !== null);
-        const alHeure = cycles.filter(v => v === 0).length;
-        const part = cycles.length ? Math.round(100 * alHeure / cycles.length) : null;
-        return carte(part === null ? '-' : part + ' %', 'diffusés au premier lundi',
-          cycles.length ? `${cycles.length - alHeure} sur ${cycles.length} ont raté un cycle`
-            + ` · délai brut ${j(mediane(diffusion))}` : null,
-          part !== null && part < 80 ? 'surveiller' : 'diffusion');
-      })()}
-      ${carte(j(mediane(parRapport)), 'application vers SAP',
-        parRapport.length ? `${Math.round(100*enRetard/parRapport.length)} % saisis après application` : null,
-        mediane(parRapport) > 0 ? 'retard' : 'surveiller')}
+      ${carte(j(ind.traitement), 'réception vers SAP', `${ind.nTraitement} tarifs mesurés`, '',
+              ecartIndic(ind.traitement, av.traitement, 'bas', 'j'))}
+      ${carte(j(ind.arbitrage), 'envoi vers retour responsable', null, '',
+              ecartIndic(ind.arbitrage, av.arbitrage, 'bas', 'j'))}
+      ${carte(ind.partLundi === null ? '-' : ind.partLundi + ' %', 'diffusés au premier lundi',
+              ind.cycles.length
+                ? `${ind.cycles.length - ind.cycles.filter(v => v === 0).length} sur ${ind.cycles.length} ont raté un cycle`
+                  + ` · délai brut ${j(ind.brutDiffusion)}` : null,
+              ind.partLundi !== null && ind.partLundi < 80 ? 'surveiller' : 'diffusion',
+              ecartIndic(ind.partLundi, av.partLundi, 'haut', 'pts'))}
+      ${carte(j(ind.application), 'application vers SAP',
+              ind.partRetard === null ? null : `${ind.partRetard} % saisis après application`,
+              ind.application > 0 ? 'retard' : 'surveiller',
+              ecartIndic(ind.application, av.application, 'bas', 'j'))}
     </div>
 
     <div class="bloc-titre" style="margin-top:26px">
-      <h2>Mises à jour SAP</h2><span class="compte">${saisis.length} sur la période</span>
+      <h2>Mises à jour SAP</h2><span class="compte">${ind.nSaisis} sur la période</span>
     </div>
     ${histogramme(cles.map(([c,l]) => [l, compte[c] || 0]), 'Mises à jour SAP par période')}
 
@@ -1578,6 +1631,9 @@ function vueBord(){
     <p style="color:var(--encre-doux);margin-top:22px">Les délais ne sont calculés que sur les
       tarifs dont les deux dates sont renseignées. Un délai négatif signale une anticipation,
       par exemple une saisie SAP effectuée avant la date d'application du tarif.<br>
+      La comparaison porte sur une période de même durée, immédiatement antérieure. Pour une
+      période en cours, elle s'arrête à ce jour de part et d'autre, afin de comparer ce qui
+      est comparable.<br>
       La diffusion partant le lundi, le délai brut entre SAP et diffusion dépend surtout du jour
       de saisie, de 7 jours pour un lundi à 3 jours pour un vendredi. L'indicateur retenu est donc
       la part des tarifs diffusés au premier lundi utile, qui mesure la tenue du cycle et non le
