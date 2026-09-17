@@ -89,6 +89,7 @@ textarea:focus-visible,a:focus-visible{outline:2px solid var(--orange);outline-o
 .compteur.diffusion{border-left:4px solid var(--abysse)}
 .compteur.demande{border-left:4px solid var(--turquoise)}
 .compteur.saisie{border-left:4px solid #8A5D00}
+.compteur.preparer{border-left:4px solid var(--retard)}
 .delta{font-size:13px;font-weight:700}
 .delta.mieux{color:var(--abysse)}
 .delta.moins{color:var(--retard)}
@@ -568,11 +569,13 @@ function enCircuit(condition){
     .filter(t => t.frs)
     .sort((a,b) => a.debut - b.debut);
 }
-// Attentes qui ne dépendent pas de vous : rien à saisir tant qu'elles courent.
+// Attentes qui ne dépendent pas de vous : rien à faire tant qu'elles courent.
 const ETAT_TIERS = ['EN ATT MARION', 'ATT FRS TARIFS', 'ATT BAN'];
-const aSaisir   = () => enCircuit(t => !t.maj_sap && !ETAT_TIERS.includes(t.etat));
-const aDiffuser = () => enCircuit(t => !!t.maj_sap);
+// Trois files distinctes, sans recouvrement, avant la MAJ SAP.
+const aPreparer   = () => enCircuit(t => !t.maj_sap && (!t.etat || t.etat === 'A FAIRE'));
 const chezUnTiers = () => enCircuit(t => !t.maj_sap && ETAT_TIERS.includes(t.etat));
+const aSaisir     = () => enCircuit(t => !t.maj_sap && t.etat === 'A SAISIR');
+const aDiffuser   = () => enCircuit(t => !!t.maj_sap);
 
 // Résumé lisible du circuit de traitement d'une version tarifaire.
 function circuit(v){
@@ -626,10 +629,12 @@ function vueAlertes(){
   const s = situations();
   const n = niv => s.filter(x => x.niveau === niv).length;
   const aFaire = D.journal.filter(j => j.statut === 'À faire').length;
-  const saisie = aSaisir(), diffusion = aDiffuser(), tiers = chezUnTiers();
+  const preparer = aPreparer(), tiers = chezUnTiers(),
+        saisie = aSaisir(), diffusion = aDiffuser();
   const NIVEAUX_LISTE = ['relance-muette','retard','surveiller','sans-tarif','relance'];
   const filtre = UI.alerte;
-  const surTarifs = filtre === 'saisie' || filtre === 'diffusion';
+  const FILES = ['preparer','tiers','saisie','diffusion'];
+  const surTarifs = FILES.includes(filtre);
 
   const investiguer = s.filter(x => filtre && !surTarifs
     ? x.niveau === filtre
@@ -640,7 +645,7 @@ function vueAlertes(){
           role="button" tabindex="0">
        <span class="n">${valeur}</span><span class="l">${libelle}</span></div>`;
 
-  // Bloc commun aux deux étapes du circuit, avec l'action attendue à ce stade.
+  // Bloc commun aux étapes du circuit, avec l'action attendue à ce stade.
   const blocTarifs = (liste, etape) => liste.length
     ? `<div class="liste">${liste.map(t => {
         const j = Math.round((AUJ() - t.debut)/86400000);
@@ -650,28 +655,39 @@ function vueAlertes(){
             <div class="nom">${esc(t.frs.raison_sociale)}</div>
             <div class="meta">Applicable le ${t.debut.toLocaleDateString('fr-FR')}
               ${etiqEtat(t.etat)}
-              ${etape === 'saisie'
-                ? ' · pas encore saisi dans SAP'
-                : ' · SAP le ' + fr(t.maj_sap)
-                  + ' · diffusion prévue le ' + lundiSuivant(jour(t.maj_sap)).toLocaleDateString('fr-FR')}</div>
+              ${etape === 'diffusion'
+                ? ' · SAP le ' + fr(t.maj_sap)
+                  + ' · diffusion prévue le ' + lundiSuivant(jour(t.maj_sap)).toLocaleDateString('fr-FR')
+                : etape === 'tiers'
+                ? (t.envoi_resp ? ' · envoyé le ' + fr(t.envoi_resp) : ' · en attente')
+                : ' · pas encore saisi dans SAP'}</div>
           </div>
           <div class="verdict ${tard?'retard':'surveiller'}">
             <strong>${tard ? 'Applicable depuis '+j+' j' : 'Dans '+Math.abs(j)+' j'}</strong>
-            ${etape === 'saisie' ? 'à saisir' : (() => {
+            ${etape === 'diffusion' ? (() => {
               const rates = cyclesManques(t.maj_sap, null);
               return rates > 0 ? `${rates} lundi${rates>1?'s':''} manqué${rates>1?'s':''}`
                                : 'part au prochain lundi';
-            })()}
+            })() : etape === 'preparer' ? 'à préparer'
+              : etape === 'tiers' ? 'chez un tiers' : 'à saisir'}
           </div>
-          ${etape === 'saisie'
+          ${etape === 'preparer'
+            ? `<button class="btn mini creux" data-envoye="${t.id}"
+                 title="Enregistre l'envoi au responsable à ce jour">Envoyé</button>`
+            : etape === 'saisie'
             ? `<button class="btn mini creux" data-saisi="${t.id}"
                  title="Enregistre la MAJ SAP à ce jour et passe l'état à SAISI">Saisi</button>`
+            : etape === 'tiers'
+            ? `<button class="btn mini creux" data-retour="${t.id}"
+                 title="Enregistre le retour du responsable et passe l'état à A SAISIR">Retour reçu</button>`
             : `<button class="btn mini creux" data-cloturer="${t.id}"
                  title="Sortir de la liste sans affirmer que le tarif a été diffusé">Clôturer</button>`}
         </div>`;}).join('')}</div>`
-    : `<div class="vide">${etape === 'saisie'
-        ? 'Aucun tarif en attente de saisie.'
-        : 'Aucun tarif en attente de diffusion.'}</div>`;
+    : `<div class="vide">${
+        etape === 'preparer' ? 'Aucun tarif à préparer.'
+      : etape === 'tiers'    ? "Aucun tarif en attente d'un tiers."
+      : etape === 'saisie'   ? 'Aucun tarif en attente de saisie.'
+                             : 'Aucun tarif en attente de diffusion.'}</div>`;
 
   $('#vue-alertes').innerHTML = `
     <div class="compteurs">
@@ -679,8 +695,9 @@ function vueAlertes(){
       ${compteur('surveiller', n('surveiller'), 'échéances sous 30 jours', 'surveiller')}
       ${compteur('sans-tarif', n('sans-tarif'), 'aucun tarif enregistré', '')}
       ${compteur('relance', n('relance') + n('relance-muette'), 'demandes en attente', 'demande')}
+      ${compteur('preparer', preparer.length, 'tarifs à préparer', 'preparer')}
       ${compteur('tiers', tiers.length, "en attente d'un tiers", 'demande')}
-      ${compteur('saisie', saisie.length, 'tarifs à saisir', 'saisie')}
+      ${compteur('saisie', saisie.length, 'tarifs à saisir dans SAP', 'saisie')}
       ${compteur('diffusion', diffusion.length, 'tarifs à diffuser', 'diffusion')}
       ${compteur('actions', aFaire, 'notes à traiter', 'actions')}
     </div>
@@ -699,19 +716,20 @@ function vueAlertes(){
         : `<div class="vide">${filtre ? 'Aucun fournisseur dans cette catégorie.'
             : "Aucun fournisseur à investiguer. Les prochaines échéances apparaîtront ici trente jours avant leur date."}</div>`}`}
 
-    ${filtre && filtre !== 'saisie' ? '' : `
-      <div class="bloc-titre" style="${filtre === 'saisie' ? '' : 'margin-top:30px'}">
-        <h2>Tarifs à saisir dans SAP</h2>
-        <span class="compte">${saisie.length}</span>
-      </div>
-      ${blocTarifs(saisie, 'saisie')}`}
-
-    ${filtre && filtre !== 'diffusion' ? '' : `
-      <div class="bloc-titre" style="${filtre === 'diffusion' ? '' : 'margin-top:30px'}">
-        <h2>Saisis, pas encore diffusés</h2>
-        <span class="compte">${diffusion.length}</span>
-      </div>
-      ${blocTarifs(diffusion, 'diffusion')}`}`;
+    ${[['preparer', preparer, 'Tarifs à préparer',
+         'Fichier à monter, contrôler, puis transmettre au responsable.'],
+        ['tiers', tiers, "En attente d'un tiers",
+         'Rien à faire de votre côté tant que le retour n\'est pas arrivé.'],
+        ['saisie', saisie, 'Tarifs à saisir dans SAP',
+         'Validés, prêts pour la saisie.'],
+        ['diffusion', diffusion, 'Saisis, pas encore diffusés',
+         'En attente du prochain lundi de diffusion.']]
+      .map(([cle, lot, titre, sous]) => (filtre && filtre !== cle) ? '' : `
+        <div class="bloc-titre" style="${filtre === cle ? '' : 'margin-top:30px'}">
+          <h2>${titre}</h2><span class="compte">${lot.length}</span>
+        </div>
+        <p style="margin:-4px 0 14px;color:var(--encre-doux)">${sous}</p>
+        ${blocTarifs(lot, cle)}`).join('')}`;
 
   brancherLignes('#vue-alertes');
 
@@ -742,6 +760,19 @@ function vueAlertes(){
       const f = D.fournisseurs.find(x => x.id === b.dataset.verifie);
       if(await marquerVerifie(f)) vueAlertes();
     }));
+  const etape = (attr, champs, message) =>
+    document.querySelectorAll('['+attr+']').forEach(b =>
+      b.addEventListener('click', async e => {
+        e.stopPropagation();
+        if(!confirm(message)) return;
+        await enregistrer('tarifs', champs(), b.getAttribute(attr));
+        await charger(); toast('Enregistré'); vueAlertes();
+      }));
+  etape('data-envoye', () => ({envoi_resp:iso(AUJ()), etat:'EN ATT MARION'}),
+        "Enregistrer l'envoi au responsable à ce jour ?");
+  etape('data-retour', () => ({retour_resp:iso(AUJ()), etat:'A SAISIR'}),
+        'Enregistrer le retour du responsable à ce jour ?');
+
   document.querySelectorAll('[data-saisi]').forEach(b =>
     b.addEventListener('click', async e => {
       e.stopPropagation();
