@@ -167,6 +167,34 @@ function joursOuvresDuMois(premierJour) {
   return compte;
 }
 
+function optionsRepartitionHTML(valeurActuelle) {
+  let html = `<option value="prorata"${valeurActuelle === 'prorata' ? ' selected' : ''}>Au prorata du salaire</option>` +
+             `<option value="50-50"${valeurActuelle === '50-50' ? ' selected' : ''}>50 / 50</option>`;
+  _adultes.forEach(m => {
+    html += `<option value="${m.id}"${valeurActuelle === m.id ? ' selected' : ''}>100% à la charge de ${m.nom}</option>`;
+  });
+  return html;
+}
+function remplirSelectsRepartition() {
+  ['cf-repartition', 'ce-repartition', 'dv-repartition'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const val = sel.value;
+    sel.innerHTML = optionsRepartitionHTML(val);
+  });
+}
+function labelRepartition(rep) {
+  if (rep === 'prorata') return 'Prorata';
+  if (rep === '50-50') return '50/50';
+  const m = _adultes.find(a => a.id === rep);
+  return m ? `100% ${m.nom}` : rep;
+}
+function tauxRepartition(repartition, membreId) {
+  if (repartition === 'prorata') return _pourcentages[membreId] || 0;
+  if (repartition === '50-50') return 1 / _adultes.length;
+  return repartition === membreId ? 1 : 0; // 100% à la charge d'un membre précis
+}
+
 function calculerPourcentages() {
   const total = _adultes.reduce((s, m) => s + (_salaires[m.id] || 0), 0);
   _pourcentages = {};
@@ -199,6 +227,7 @@ async function chargerSalaires() {
     }
   });
   calculerPourcentages();
+  remplirSelectsRepartition();
 
   document.getElementById('zone-salaires').innerHTML = _adultes.map(m => `
     <div class="carte" style="border-left:4px solid ${m.couleur}">
@@ -292,7 +321,7 @@ async function chargerChargesFixes() {
     <div class="carte">
       <strong>${c.libelle}</strong><br>
       <span style="font-size:1.2rem;font-weight:800;color:${info.montant < 0 ? 'var(--louis)' : 'var(--ink)'}">${info.montant.toFixed(2)} €</span>
-      <span class="badge-membre" style="background:var(--ink-soft);margin-left:6px;">${c.repartition === 'prorata' ? 'Prorata' : '50/50'}</span>
+      <span class="badge-membre" style="background:var(--ink-soft);margin-left:6px;">${labelRepartition(c.repartition)}</span>
       ${info.suggestion ? '<p style="margin-top:6px;color:var(--ink-soft);font-size:0.78rem;font-style:italic;">Non figé pour ce mois — valeur reprise du dernier mois connu.</p>' : ''}
       <div style="margin-top:10px;display:flex;gap:6px;">
         <button class="btn" style="background:var(--paper);color:var(--ink);box-shadow:var(--shadow-1);" onclick="modifierChargeFixe('${c.id}')">✏️ Modifier ce mois</button>
@@ -375,7 +404,7 @@ async function chargerChargesEnfants() {
         </label>
         <p style="margin:6px 0;font-size:0.85rem;color:var(--ink-soft);">Jours retenus : <strong>${joursRetenus}</strong></p>
         <span style="font-size:1.2rem;font-weight:800;">${cout.toFixed(2)} €</span>
-        <span class="badge-membre" style="background:var(--ink-soft);margin-left:6px;">${c.repartition === 'prorata' ? 'Prorata' : '50/50'}</span>
+        <span class="badge-membre" style="background:var(--ink-soft);margin-left:6px;">${labelRepartition(c.repartition)}</span>
         <div style="margin-top:10px;display:flex;gap:6px;">
           <button class="btn" style="background:var(--paper);color:var(--ink);box-shadow:var(--shadow-1);" onclick="modifierChargeEnfant('${c.id}')">✏️ Modifier</button>
           <button class="btn" style="background:var(--ink-soft)" onclick="supprimerChargeEnfant('${c.id}')">Supprimer</button>
@@ -445,7 +474,7 @@ async function chargerDepenses() {
   document.getElementById('zone-depenses').innerHTML = (data || []).map(d => `
     <div class="carte" style="border-left:4px solid ${membresParId[d.membre_id] ? membresParId[d.membre_id].couleur : 'var(--border)'}">
       <strong>${d.montant.toFixed(2)} €</strong> ${d.libelle ? '— ' + d.libelle : ''}<br>
-      <span style="color:var(--ink-soft);font-size:0.85rem;">${d.categorie} · ${new Date(d.date).toLocaleDateString('fr-FR')} · ${d.repartition === 'prorata' ? 'Prorata' : '50/50'}</span>
+      <span style="color:var(--ink-soft);font-size:0.85rem;">${d.categorie} · ${new Date(d.date).toLocaleDateString('fr-FR')} · ${labelRepartition(d.repartition)}</span>
       <div style="margin-top:6px;">${badgeMembre(membresParId[d.membre_id])}</div>
       <div style="margin-top:8px;">
         <button class="btn" style="background:var(--ink-soft)" onclick="supprimerDepense('${d.id}')">Supprimer</button>
@@ -517,7 +546,7 @@ async function chargerResume() {
   _adultes.forEach(m => partTheorique[m.id] = 0);
   postes.forEach(p => {
     _adultes.forEach(m => {
-      const taux = p.repartition === 'prorata' ? (_pourcentages[m.id] || 0) : (1 / _adultes.length);
+      const taux = tauxRepartition(p.repartition, m.id);
       partTheorique[m.id] += p.montant * taux;
     });
   });
