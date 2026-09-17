@@ -489,6 +489,7 @@ function App() {
   const [refDate, setRefDate] = useState(new Date());
   const [period, setPeriod] = useState("jour");
   const [historySearch, setHistorySearch] = useState("");
+  const [drillCat, setDrillCat] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [toast, setToast] = useState(null);
   const [syncError, setSyncError] = useState(false);
@@ -801,8 +802,52 @@ function App() {
     return { byCat, production, indirect, projet, total };
   }, [periodEntries]);
 
-  const pieData = CATS.map((c) => ({ name: c.label, value: agg.byCat[c.key], color: c.color })).filter((d) => d.value > 0);
-  const topConsumers = [...CATS].map((c) => ({ name: c.label, minutes: agg.byCat[c.key], color: c.color })).filter((d) => d.minutes>0).sort((a,b)=>b.minutes-a.minutes).slice(0,5);
+  /* -------- période précédente, pour les indicateurs d'évolution -------- */
+  const prevRefDate = useMemo(() => {
+    const d = new Date(refDate);
+    if (period === "jour") d.setDate(d.getDate() - 1);
+    else if (period === "semaine") d.setDate(d.getDate() - 7);
+    else if (period === "annee") d.setFullYear(d.getFullYear() - 1);
+    else d.setMonth(d.getMonth() - 1);
+    return d;
+  }, [period, refDate]);
+  const prevRange = useMemo(() => {
+    if (period === "jour") return [prevRefDate, prevRefDate];
+    if (period === "semaine") return [startOfWeek(prevRefDate), endOfWeek(prevRefDate)];
+    if (period === "annee") return [startOfYear(prevRefDate), endOfYear(prevRefDate)];
+    return [startOfMonth(prevRefDate), endOfMonth(prevRefDate)];
+  }, [period, prevRefDate]);
+  const prevAgg = useMemo(() => {
+    const [s,e] = prevRange; const sIso = toISO(s), eIso = toISO(e);
+    const prevEntries = entries.filter((en) => en.date >= sIso && en.date <= eIso);
+    const byCat = {}; CATS.forEach((c) => byCat[c.key] = 0);
+    let production=0, indirect=0, projet=0, total=0;
+    prevEntries.forEach((e) => {
+      byCat[e.cat] = (byCat[e.cat]||0) + e.minutes; total += e.minutes;
+      const g = catByKey(e.cat).group;
+      if (g==="production") production += e.minutes; else if (g==="projet") projet += e.minutes; else indirect += e.minutes;
+    });
+    return { byCat, production, indirect, projet, total };
+  }, [entries, prevRange]);
+  const prevLabel = period==="jour" ? "jour précédent" : period==="semaine" ? "semaine précédente" : period==="annee" ? "année précédente" : "mois précédent";
+
+  /* -------- détail par sous-catégorie au clic sur une grande catégorie -------- */
+  const drillBreakdown = useMemo(() => {
+    if (!drillCat) return null;
+    const now = new Date();
+    const ranges = { jour: [now, now], semaine: [startOfWeek(now), endOfWeek(now)], mois: [startOfMonth(now), endOfMonth(now)] };
+    const build = ([s,e]) => {
+      const sIso = toISO(s), eIso = toISO(e);
+      const map = {};
+      let tot = 0;
+      entries.filter((en) => en.cat === drillCat && en.date >= sIso && en.date <= eIso).forEach((en) => { map[en.sub] = (map[en.sub]||0) + en.minutes; tot += en.minutes; });
+      return { total: tot, subs: Object.entries(map).map(([sub,minutes])=>({sub,minutes})).sort((a,b)=>b.minutes-a.minutes) };
+    };
+    return { jour: build(ranges.jour), semaine: build(ranges.semaine), mois: build(ranges.mois) };
+  }, [drillCat, entries]);
+
+  const pieData = CATS.map((c) => ({ key: c.key, name: c.label, value: agg.byCat[c.key], color: c.color })).filter((d) => d.value > 0);
+  const topConsumers = [...CATS].map((c) => ({ key: c.key, name: c.label, minutes: agg.byCat[c.key], prevMinutes: prevAgg.byCat[c.key], color: c.color })).filter((d) => d.minutes>0).sort((a,b)=>b.minutes-a.minutes).slice(0,5);
   const theoreticalMinutes = period==="jour" ? dayTheoretical
     : period==="semaine" ? settings.weeklyHours*60
     : period==="annee" ? Math.round(settings.weeklyHours*60*getWeeksInYear(refDate))
@@ -1013,10 +1058,10 @@ function App() {
           </div>
 
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10,marginBottom:20}}>
-            <Kpi label="Total suivi" value={fmt(agg.total)} color={C.text} />
-            <Kpi label="Production (tarifs)" value={fmt(agg.production)} color="#0067C0" />
-            <Kpi label="Charge indirecte" value={fmt(agg.indirect)} sub={`${indirectPct}% du total`} color={C.accent} />
-            <Kpi label="Projets" value={fmt(agg.projet)} color="#107C10" />
+            <Kpi label="Total suivi" value={fmt(agg.total)} color={C.text} delta={<Delta curr={agg.total} prev={prevAgg.total} label={prevLabel} />} />
+            <Kpi label="Production (tarifs)" value={fmt(agg.production)} color="#0067C0" delta={<Delta curr={agg.production} prev={prevAgg.production} label={prevLabel} />} />
+            <Kpi label="Charge indirecte" value={fmt(agg.indirect)} sub={`${indirectPct}% du total`} color={C.accent} delta={<Delta curr={agg.indirect} prev={prevAgg.indirect} label={prevLabel} />} />
+            <Kpi label="Projets" value={fmt(agg.projet)} color="#107C10" delta={<Delta curr={agg.projet} prev={prevAgg.projet} label={prevLabel} />} />
             <Kpi label="Disponible production" value={fmt(disponible)} sub="théorique − indirect − projet" color={C.muted} />
           </div>
 
@@ -1024,16 +1069,19 @@ function App() {
           {agg.total > 0 && (
             <>
               <div style={{display:"grid",gridTemplateColumns:"1.1fr 1fr",gap:16,marginBottom:20}}>
-                <Panel title="Répartition du temps">
-                  <SimplePie data={pieData} />
+                <Panel title="Répartition du temps — clique une catégorie pour le détail">
+                  <SimplePie data={pieData} onSlice={(key)=>setDrillCat(key)} />
                 </Panel>
                 <Panel title="Top consommateurs de temps">
                   <div style={{display:"flex",flexDirection:"column",gap:10,padding:"6px 0"}}>
                     {topConsumers.map((d,i) => (
-                      <div key={d.name}>
-                        <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
+                      <div key={d.name} onClick={()=>setDrillCat(d.key)} style={{cursor:"pointer"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",fontSize:12,marginBottom:4}}>
                           <span style={{color:C.muted}}>{i+1}. {d.name}</span>
-                          <span className="mono" style={{color:C.text}}>{fmt(d.minutes)}</span>
+                          <span style={{display:"flex",alignItems:"baseline",gap:6}}>
+                            <Delta curr={d.minutes} prev={d.prevMinutes} label={prevLabel} />
+                            <span className="mono" style={{color:C.text}}>{fmt(d.minutes)}</span>
+                          </span>
                         </div>
                         <div style={{height:6,background:C.panel2,borderRadius:4}}>
                           <div style={{height:6,borderRadius:4,background:d.color,width:`${(d.minutes/topConsumers[0].minutes)*100}%`}} />
@@ -1163,6 +1211,39 @@ function App() {
         </div>
       )}
 
+      {drillCat && drillBreakdown && (
+        <div style={{position:"fixed",inset:0,background:"rgba(22,48,46,.45)",display:"flex",alignItems:"center",justifyContent:"center",padding:20,zIndex:50}} onClick={()=>setDrillCat(null)}>
+          <div style={{background:C.panel,borderRadius:4,width:"min(640px,94vw)",maxHeight:"86vh",display:"flex",flexDirection:"column"}} onClick={(e)=>e.stopPropagation()}>
+            <div style={{background:C.abysse,color:"#fff",padding:"14px 18px",fontWeight:700,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span>{catByKey(drillCat).label} — détail par sous-catégorie</span>
+              <button onClick={()=>setDrillCat(null)} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",fontSize:16}}>✕</button>
+            </div>
+            <div style={{padding:18,overflowY:"auto",display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:16}}>
+              {[["jour","Aujourd'hui"],["semaine","Cette semaine"],["mois","Ce mois-ci"]].map(([k,label]) => (
+                <div key={k}>
+                  <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:8,display:"flex",justifyContent:"space-between"}}>
+                    <span>{label}</span>
+                    <span className="mono" style={{color:C.text}}>{fmt(drillBreakdown[k].total)}</span>
+                  </div>
+                  {drillBreakdown[k].subs.length === 0 ? (
+                    <div style={{fontSize:12,color:C.faint}}>Rien sur cette période.</div>
+                  ) : (
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      {drillBreakdown[k].subs.map((s) => (
+                        <div key={s.sub} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12,borderBottom:`1px solid ${C.border}`,paddingBottom:5}}>
+                          <span style={{color:C.text}}>{s.sub}</span>
+                          <span className="mono" style={{color:C.muted,whiteSpace:"nowrap"}}>{fmt(s.minutes)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {toast && (
         <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:3,padding:"10px 16px",fontSize:13,color:C.text,boxShadow:"0 1px 3px rgba(1,89,89,0.18)"}}>
           ✓ {toast}
@@ -1190,14 +1271,24 @@ function Panel({title,children}) {
     {children}
   </div>;
 }
-function Kpi({label,value,sub,color}) {
+function Kpi({label,value,sub,color,delta}) {
   return <div style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:3,padding:"12px 14px"}}>
     <div style={{fontSize:11,color:C.faint,marginBottom:6}}>{label}</div>
     <div className="mono disp" style={{fontSize:20,fontWeight:700,color}}>{value}</div>
     {sub && <div style={{fontSize:10,color:C.faint,marginTop:3}}>{sub}</div>}
+    {delta && <div style={{marginTop:3}}>{delta}</div>}
   </div>;
 }
-function SimplePie({data}) {
+function Delta({curr,prev,label}) {
+  if (!curr && !prev) return null;
+  if (!prev) return <span style={{fontSize:10,color:C.faint}}>— pas de {label}</span>;
+  const diff = curr - prev;
+  if (diff === 0) return <span style={{fontSize:10,color:C.faint}}>= {label}</span>;
+  const pct = Math.round((Math.abs(diff)/prev)*100);
+  const up = diff > 0;
+  return <span style={{fontSize:10,color:C.muted}}>{up?"▲":"▼"} {pct}% vs {label}</span>;
+}
+function SimplePie({data,onSlice}) {
   const total = data.reduce((s,d)=>s+d.value,0);
   let cumulative = 0;
   const R = 70, CX = 90, CY = 90;
@@ -1207,15 +1298,15 @@ function SimplePie({data}) {
     const x1 = CX+R*Math.sin(start), y1 = CY-R*Math.cos(start);
     const x2 = CX+R*Math.sin(end), y2 = CY-R*Math.cos(end);
     const large = end-start > Math.PI ? 1 : 0;
-    return { path: `M${CX},${CY} L${x1},${y1} A${R},${R} 0 ${large} 1 ${x2},${y2} Z`, color: d.color };
+    return { path: `M${CX},${CY} L${x1},${y1} A${R},${R} 0 ${large} 1 ${x2},${y2} Z`, color: d.color, key: d.key };
   });
   return <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
     <svg width="180" height="180" viewBox="0 0 180 180">
-      {slices.map((s,i) => <path key={i} d={s.path} fill={s.color} stroke={C.panel} strokeWidth="2" />)}
-      <circle cx={CX} cy={CY} r="38" fill={C.panel} />
+      {slices.map((s,i) => <path key={i} d={s.path} fill={s.color} stroke={C.panel} strokeWidth="2" style={{cursor:onSlice?"pointer":"default"}} onClick={()=>onSlice&&onSlice(s.key)} />)}
+      <circle cx={CX} cy={CY} r="38" fill={C.panel} style={{pointerEvents:"none"}} />
     </svg>
     <div style={{display:"flex",flexWrap:"wrap",gap:"4px 14px",marginTop:10,justifyContent:"center"}}>
-      {data.map((d) => <div key={d.name} style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:C.muted}}>
+      {data.map((d) => <div key={d.name} onClick={()=>onSlice&&onSlice(d.key)} style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:C.muted,cursor:onSlice?"pointer":"default"}}>
         <span style={{width:8,height:8,borderRadius:2,background:d.color}} />{d.name}
       </div>)}
     </div>
