@@ -674,6 +674,16 @@ function App() {
     if (error) setSyncError(true);
   };
 
+  const setAbsence = (dateIso, type) => {
+    const current = dayLogs[dateIso] || {};
+    persistDayLog(dateIso, { ...current, absence: type });
+  };
+  const clearAbsence = (dateIso) => {
+    const current = dayLogs[dateIso] || {};
+    const { absence, ...rest } = current;
+    persistDayLog(dateIso, rest);
+  };
+
   const addProject = async (name) => {
     const clean = name.trim();
     if (!clean) return;
@@ -851,10 +861,15 @@ function App() {
 
   const pieData = CATS.map((c) => ({ key: c.key, name: c.label, value: agg.byCat[c.key], color: c.color })).filter((d) => d.value > 0);
   const topConsumers = [...CATS].map((c) => ({ key: c.key, name: c.label, minutes: agg.byCat[c.key], prevMinutes: prevAgg.byCat[c.key], color: c.color })).filter((d) => d.minutes>0).sort((a,b)=>b.minutes-a.minutes).slice(0,5);
-  const theoreticalMinutes = period==="jour" ? dayTheoretical
+  const theoreticalMinutesRaw = period==="jour" ? dayTheoretical
     : period==="semaine" ? settings.weeklyHours*60
     : period==="annee" ? Math.round(settings.weeklyHours*60*getWeeksInYear(refDate))
     : Math.round(settings.weeklyHours*60*getWeeksInMonth(refDate));
+  const absentDaysInRange = useMemo(() => {
+    const [s,e] = range; const sIso = toISO(s), eIso = toISO(e);
+    return Object.entries(dayLogs).filter(([date, log]) => log && log.absence && date >= sIso && date <= eIso).length;
+  }, [dayLogs, range]);
+  const theoreticalMinutes = Math.max(0, theoreticalMinutesRaw - absentDaysInRange * dayTheoretical);
   const disponible = Math.max(0, theoreticalMinutes - agg.indirect - agg.projet);
   const indirectPct = agg.total ? Math.round((agg.indirect/agg.total)*100) : 0;
 
@@ -948,18 +963,36 @@ function App() {
       {tab === "saisie" && (
         <div style={{padding:20,maxWidth:900,margin:"0 auto"}}>
           <TimeClock log={todayLog} onChange={(l)=>persistDayLog(todayIso,l)} todayTotal={todayTotal} onLogEcart={addRawEntry} />
-          <DayGauge todayTotal={todayTotal} gaugeMax={gaugeMax} todayEntries={todayEntries} dayTheoretical={dayTheoretical} />
+          <DayGauge todayTotal={todayTotal} gaugeMax={gaugeMax} todayEntries={todayEntries} dayTheoretical={dayTheoretical} absence={todayLog?.absence} />
 
           <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:16,padding:"10px 14px",borderRadius:3,
-            border:`1px solid ${entryDate===todayIso?C.border:"#F8AC1655"}`, background:entryDate===todayIso?C.panel:"#F8AC1612"}}>
+            border:`1px solid ${dayLogs[entryDate]?.absence?"#A3332755":entryDate===todayIso?C.border:"#F8AC1655"}`,
+            background:dayLogs[entryDate]?.absence?"#A3332712":entryDate===todayIso?C.panel:"#F8AC1612"}}>
             <span style={{fontSize:12,color:C.muted}}>Je saisis du temps pour :</span>
             <input type="date" value={entryDate} max={todayIso} onChange={(e)=>setEntryDate(e.target.value||todayIso)} className="mono"
               style={{padding:"6px 8px",borderRadius:3,border:`1px solid ${C.border2}`,fontSize:13,color:C.text}} />
-            {entryDate !== todayIso && (
+            {entryDate !== todayIso && !dayLogs[entryDate]?.absence && (
+              <span style={{fontSize:12,color:"#8A5D00"}}>⚠️ pas aujourd'hui — les saisies ci-dessous iront sur cette date</span>
+            )}
+
+            {dayLogs[entryDate]?.absence ? (
               <>
-                <span style={{fontSize:12,color:"#8A5D00"}}>⚠️ pas aujourd'hui — les saisies ci-dessous iront sur cette date</span>
-                <button onClick={()=>setEntryDate(todayIso)} style={{marginLeft:"auto",fontSize:12,color:C.abysse,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:3,padding:"5px 10px",cursor:"pointer"}}>Revenir à aujourd'hui</button>
+                <span style={{fontSize:12,fontWeight:600,color:"#A33327"}}>🚫 Absence — {dayLogs[entryDate].absence}</span>
+                <button onClick={()=>clearAbsence(entryDate)} style={{marginLeft:"auto",fontSize:12,color:C.muted,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:3,padding:"5px 10px",cursor:"pointer"}}>Retirer l'absence</button>
               </>
+            ) : (
+              <select onChange={(e)=>{if(e.target.value) setAbsence(entryDate,e.target.value); e.target.value="";}} defaultValue=""
+                style={{marginLeft:"auto",fontSize:12,color:C.muted,background:C.panel,border:`1px solid ${C.border2}`,borderRadius:3,padding:"5px 8px",cursor:"pointer"}}>
+                <option value="">Marquer une absence…</option>
+                <option value="Congés">Congés</option>
+                <option value="Arrêt maladie">Arrêt maladie</option>
+                <option value="Jour férié">Jour férié</option>
+                <option value="Autre">Autre</option>
+              </select>
+            )}
+
+            {entryDate !== todayIso && (
+              <button onClick={()=>setEntryDate(todayIso)} style={{fontSize:12,color:C.abysse,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:3,padding:"5px 10px",cursor:"pointer"}}>Revenir à aujourd'hui</button>
             )}
           </div>
 
@@ -1078,7 +1111,7 @@ function App() {
             <Kpi label="Production (tarifs)" value={fmt(agg.production)} color="#0067C0" delta={<Delta curr={agg.production} prev={prevAgg.production} label={prevLabel} />} />
             <Kpi label="Charge indirecte" value={fmt(agg.indirect)} sub={`${indirectPct}% du total`} color={C.accent} delta={<Delta curr={agg.indirect} prev={prevAgg.indirect} label={prevLabel} />} />
             <Kpi label="Projets" value={fmt(agg.projet)} color="#107C10" delta={<Delta curr={agg.projet} prev={prevAgg.projet} label={prevLabel} />} />
-            <Kpi label="Disponible production" value={fmt(disponible)} sub="théorique − indirect − projet" color={C.muted} />
+            <Kpi label="Disponible production" value={fmt(disponible)} sub={absentDaysInRange>0 ? `théorique − indirect − projet · ${absentDaysInRange} j. d'absence exclu${absentDaysInRange>1?"s":""}` : "théorique − indirect − projet"} color={C.muted} />
           </div>
 
           {agg.total === 0 && !historySearch.trim() ? <div style={{color:C.faint,fontSize:13,padding:"40px 0",textAlign:"center"}}>Aucune saisie sur cette période.</div> : null}
@@ -1393,13 +1426,17 @@ function EntryRow({e,onDelete,onToggle,showDate,editing,onEditStart,onEditCancel
     <button onClick={onDelete} style={{background:"none",border:"none",cursor:"pointer",padding:4}} title="Supprimer">🗑️</button>
   </div>;
 }
-function DayGauge({todayTotal,gaugeMax,todayEntries,dayTheoretical}) {
+function DayGauge({todayTotal,gaugeMax,todayEntries,dayTheoretical,absence}) {
   const byCat = {};
   todayEntries.forEach((e) => { byCat[e.cat] = (byCat[e.cat]||0)+e.minutes; });
   return <div style={{marginBottom:22}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
       <span style={{fontSize:12,fontWeight:600,color:C.muted,letterSpacing:0.3,textTransform:"uppercase"}}>📊 Journée en cours</span>
-      <span className="disp mono" style={{fontSize:15,fontWeight:700}}>{fmt(todayTotal)} <span style={{color:C.faint,fontWeight:400}}>/ {fmt(dayTheoretical)} théorique</span></span>
+      {absence ? (
+        <span className="disp" style={{fontSize:13,fontWeight:700,color:"#A33327"}}>🚫 Absence — {absence} · pas de temps théorique attendu</span>
+      ) : (
+        <span className="disp mono" style={{fontSize:15,fontWeight:700}}>{fmt(todayTotal)} <span style={{color:C.faint,fontWeight:400}}>/ {fmt(dayTheoretical)} théorique</span></span>
+      )}
     </div>
     <div style={{display:"flex",height:14,borderRadius:3,overflow:"hidden",background:C.panel2,border:`1px solid ${C.border}`}}>
       {CATS.map((c) => { const m=byCat[c.key]||0; if(!m) return null; return <div key={c.key} style={{width:`${(m/gaugeMax)*100}%`,background:c.color}} title={`${c.label}: ${fmt(m)}`} />; })}
