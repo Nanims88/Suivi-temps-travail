@@ -495,6 +495,7 @@ function App() {
   const [syncError, setSyncError] = useState(false);
 
   const [selCat, setSelCat] = useState(null);
+  const [entryDate, setEntryDate] = useState(() => toISO(new Date()));
   const [selSub, setSelSub] = useState(null);
   const [details, setDetails] = useState(false);
   const [subject, setSubject] = useState("");
@@ -548,10 +549,10 @@ function App() {
   const addEntry = async (minutes) => {
     if (!selCat || !selSub || !minutes) return;
     const cat = catByKey(selCat);
-    const entry = { id: uid(), date: toISO(new Date()), cat: selCat, sub: selSub, minutes, subject: subject.trim(), comment: comment.trim(), status: "Terminé", created_at: Date.now() };
+    const entry = { id: uid(), date: entryDate, cat: selCat, sub: selSub, minutes, subject: subject.trim(), comment: comment.trim(), status: "Terminé", created_at: Date.now() };
     setEntries((prev) => [entry, ...prev]);
     const { error } = await sb.from("entries").insert(entry);
-    if (error) { console.error(error); setSyncError(true); } else { showToast(`+ ${fmt(minutes)} · ${cat.label}`); }
+    if (error) { console.error(error); setSyncError(true); } else { showToast(entryDate === toISO(new Date()) ? `+ ${fmt(minutes)} · ${cat.label}` : `+ ${fmt(minutes)} · ${cat.label} · ${parseISO(entryDate).toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"})}`); }
     setSubject(""); setComment(""); setDetails(false); setCustomMin(""); setSelSub(null);
   };
 
@@ -746,6 +747,8 @@ function App() {
   /* -------- today aggregation -------- */
   const todayIso = toISO(new Date());
   const todayEntries = useMemo(() => entries.filter((e) => e.date === todayIso), [entries, todayIso]);
+  const entryDateEntries = useMemo(() => entries.filter((e) => e.date === entryDate), [entries, entryDate]);
+  const entryDateTotal = entryDateEntries.reduce((s, e) => s + e.minutes, 0);
   const todayTotal = todayEntries.reduce((s, e) => s + e.minutes, 0);
   const dayTheoretical = Math.round((settings.weeklyHours / 5) * 60);
   const gaugeMax = Math.max(dayTheoretical, todayTotal, 60);
@@ -947,6 +950,19 @@ function App() {
           <TimeClock log={todayLog} onChange={(l)=>persistDayLog(todayIso,l)} todayTotal={todayTotal} onLogEcart={addRawEntry} />
           <DayGauge todayTotal={todayTotal} gaugeMax={gaugeMax} todayEntries={todayEntries} dayTheoretical={dayTheoretical} />
 
+          <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:16,padding:"10px 14px",borderRadius:3,
+            border:`1px solid ${entryDate===todayIso?C.border:"#F8AC1655"}`, background:entryDate===todayIso?C.panel:"#F8AC1612"}}>
+            <span style={{fontSize:12,color:C.muted}}>Je saisis du temps pour :</span>
+            <input type="date" value={entryDate} max={todayIso} onChange={(e)=>setEntryDate(e.target.value||todayIso)} className="mono"
+              style={{padding:"6px 8px",borderRadius:3,border:`1px solid ${C.border2}`,fontSize:13,color:C.text}} />
+            {entryDate !== todayIso && (
+              <>
+                <span style={{fontSize:12,color:"#8A5D00"}}>⚠️ pas aujourd'hui — les saisies ci-dessous iront sur cette date</span>
+                <button onClick={()=>setEntryDate(todayIso)} style={{marginLeft:"auto",fontSize:12,color:C.abysse,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:3,padding:"5px 10px",cursor:"pointer"}}>Revenir à aujourd'hui</button>
+              </>
+            )}
+          </div>
+
           <Section title="Saisie ultra-rapide" subtitle="1 clic pour préremplir, 1 clic pour la durée">
             <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
               {PRESETS.map((p) => (
@@ -1029,10 +1045,10 @@ function App() {
             </>
           )}
 
-          <Section title={`Aujourd'hui — ${fmt(todayTotal)}`}>
-            {todayEntries.length===0 ? <div style={{color:C.faint,fontSize:13}}>Aucune saisie pour l'instant.</div> :
+          <Section title={entryDate===todayIso ? `Aujourd'hui — ${fmt(todayTotal)}` : `${parseISO(entryDate).toLocaleDateString("fr-FR",{weekday:"long",day:"2-digit",month:"long"})} — ${fmt(entryDateTotal)}`}>
+            {entryDateEntries.length===0 ? <div style={{color:C.faint,fontSize:13}}>Aucune saisie pour l'instant.</div> :
               <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                {todayEntries.map((e) => (
+                {entryDateEntries.map((e) => (
                   <EntryRow key={e.id} e={e} onDelete={()=>deleteEntry(e.id)} onToggle={()=>toggleStatus(e.id)}
                     editing={editingId===e.id} onEditStart={()=>setEditingId(e.id)} onEditCancel={()=>setEditingId(null)} onEditSave={(patch)=>updateEntry(e.id,patch)} />
                 ))}
