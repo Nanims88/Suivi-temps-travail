@@ -353,6 +353,11 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   .chip:active { transform: scale(0.96); }
   ::-webkit-scrollbar { height: 6px; width: 6px; }
   ::-webkit-scrollbar-thumb { background: var(--trait); border-radius: 3px; }
+  .eh-grid { display:grid; grid-template-columns: 90px 1fr 1fr; gap:10px; }
+  @media (max-width: 680px) {
+    .eh-grid { grid-template-columns: 1fr; gap:12px; }
+    .eh-axis { display:none; }
+  }
 </style>
 </head>
 <body>
@@ -1568,11 +1573,11 @@ const EISENHOWER_QUADRANTS = [
 function EisenhowerMatrix({quadrants,editingTaskId,onCycleStatus,onDelete,onEditStart,onEditSave,onEditCancel,onMove}) {
   const [dragOverQ, setDragOverQ] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
-  const axisLabel = (text) => <div style={{display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:600,color:C.faint,textTransform:"uppercase",letterSpacing:0.5,textAlign:"center",padding:4}}>{text}</div>;
+  const axisLabel = (text) => <div className="eh-axis" style={{display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:600,color:C.faint,textTransform:"uppercase",letterSpacing:0.5,textAlign:"center",padding:4}}>{text}</div>;
   return (
     <div>
-      <div style={{display:"grid",gridTemplateColumns:"90px 1fr 1fr",gap:10}}>
-        <div />
+      <div className="eh-grid">
+        <div className="eh-axis" />
         {axisLabel("⟵ Urgent")}
         {axisLabel("Pas urgent ⟶")}
         {axisLabel("Important")}
@@ -1580,6 +1585,7 @@ function EisenhowerMatrix({quadrants,editingTaskId,onCycleStatus,onDelete,onEdit
         {axisLabel("Pas important")}
         {EISENHOWER_QUADRANTS.slice(2,4).map((q) => renderQuadrant(q))}
       </div>
+      <div style={{fontSize:11,color:C.faint,marginTop:10,textAlign:"center"}}>Glisse une carte entre les cadrans (souris), ou utilise les pastilles 🔥🎯🤝🗑️ sur chaque tâche (tactile).</div>
     </div>
   );
 
@@ -1602,40 +1608,57 @@ function EisenhowerMatrix({quadrants,editingTaskId,onCycleStatus,onDelete,onEdit
           <MatrixCard key={t.id} t={t} editing={editingTaskId===t.id} dragging={draggingId===t.id}
             onDragStart={()=>setDraggingId(t.id)} onDragEnd={()=>setDraggingId(null)}
             onCycleStatus={()=>onCycleStatus(t)} onDelete={()=>onDelete(t.id)}
-            onEditStart={()=>onEditStart(t.id)} onEditSave={(text)=>onEditSave(t,text)} onEditCancel={onEditCancel} />
+            onEditStart={()=>onEditStart(t.id)} onEditSave={(text)=>onEditSave(t,text)} onEditCancel={onEditCancel}
+            onMove={(urgent,important)=>onMove(t.id,urgent,important)} />
         ))}
       </div>
     );
   }
 }
-function MatrixCard({t,editing,dragging,onDragStart,onDragEnd,onCycleStatus,onDelete,onEditStart,onEditSave,onEditCancel}) {
+function MatrixCard({t,editing,dragging,onDragStart,onDragEnd,onCycleStatus,onDelete,onEditStart,onEditSave,onEditCancel,onMove}) {
   const s = statusByKey(t.status);
   const cat = t.category ? catByKey(t.category) : null;
   const [draft,setDraft] = useState(t.text);
   const isDone = t.status === "fait";
+  const isUrgent = t.priority === "urgente", isImportant = !!t.important;
   return (
     <div draggable
       onDragStart={(e)=>{e.dataTransfer.setData("text/plain", t.id); e.dataTransfer.effectAllowed="move"; onDragStart();}}
       onDragEnd={onDragEnd}
-      style={{display:"flex",alignItems:"center",gap:8,padding:"7px 9px",background:C.panel,borderRadius:12,border:`1px solid ${C.border}`,
+      style={{display:"flex",flexDirection:"column",gap:6,padding:"7px 9px",background:C.panel,borderRadius:12,border:`1px solid ${C.border}`,
         cursor:"grab",opacity:dragging?0.4:1}}>
-      <button onClick={onCycleStatus} title="Changer le statut" style={{
-        width:16,height:16,borderRadius:999,border:`2px solid ${s.color}`,background:isDone?s.color:"transparent",
-        display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",padding:0}}>
-        {isDone && <span style={{color:"#16302E",fontSize:9,lineHeight:1,fontWeight:700}}>✓</span>}
-      </button>
-      {cat && <span style={{width:7,height:7,borderRadius:999,background:cat.color,flexShrink:0}} title={cat.label} />}
-      <div style={{flex:1,minWidth:0}}>
-        {editing ? (
-          <input autoFocus value={draft} onChange={(e)=>setDraft(e.target.value)}
-            onKeyDown={(e)=>{if(e.key==="Enter") onEditSave(draft); if(e.key==="Escape") onEditCancel();}}
-            onBlur={()=>onEditSave(draft)}
-            style={{width:"100%",background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:8,padding:"3px 5px",fontSize:12,color:C.text}} />
-        ) : (
-          <span onClick={onEditStart} style={{fontSize:12,cursor:"text",textDecoration:isDone?"line-through":"none",color:isDone?C.faint:C.text,overflowWrap:"anywhere"}}>{t.text}</span>
-        )}
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <button onClick={onCycleStatus} title="Changer le statut" style={{
+          width:16,height:16,borderRadius:999,border:`2px solid ${s.color}`,background:isDone?s.color:"transparent",
+          display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",padding:0}}>
+          {isDone && <span style={{color:"#16302E",fontSize:9,lineHeight:1,fontWeight:700}}>✓</span>}
+        </button>
+        {cat && <span style={{width:7,height:7,borderRadius:999,background:cat.color,flexShrink:0}} title={cat.label} />}
+        <div style={{flex:1,minWidth:0}}>
+          {editing ? (
+            <input autoFocus value={draft} onChange={(e)=>setDraft(e.target.value)}
+              onKeyDown={(e)=>{if(e.key==="Enter") onEditSave(draft); if(e.key==="Escape") onEditCancel();}}
+              onBlur={()=>onEditSave(draft)}
+              style={{width:"100%",background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:8,padding:"3px 5px",fontSize:12,color:C.text}} />
+          ) : (
+            <span onClick={onEditStart} style={{fontSize:12,cursor:"text",textDecoration:isDone?"line-through":"none",color:isDone?C.faint:C.text,overflowWrap:"anywhere"}}>{t.text}</span>
+          )}
+        </div>
+        <button onClick={onDelete} style={{background:"none",border:"none",cursor:"pointer",padding:2,fontSize:11,flexShrink:0}} title="Supprimer">🗑️</button>
       </div>
-      <button onClick={onDelete} style={{background:"none",border:"none",cursor:"pointer",padding:2,fontSize:11,flexShrink:0}} title="Supprimer">🗑️</button>
+      <div style={{display:"flex",gap:4,paddingLeft:24}}>
+        {EISENHOWER_QUADRANTS.map((q) => {
+          const active = isUrgent===q.urgent && isImportant===q.important;
+          return (
+            <button key={q.key} onClick={()=>onMove(q.urgent,q.important)} title={q.title.replace(/^\S+\s/,"")}
+              style={{width:22,height:22,borderRadius:999,border:`1.5px solid ${active?q.color:C.border2}`,
+                background:active?`${q.color}22`:"transparent",fontSize:11,lineHeight:1,cursor:"pointer",padding:0,
+                opacity:active?1:0.5,flexShrink:0}}>
+              {q.title.split(" ")[0]}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
