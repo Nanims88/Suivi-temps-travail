@@ -877,6 +877,8 @@ function App() {
   const theoreticalMinutes = Math.max(0, theoreticalMinutesRaw - absentDaysInRange * dayTheoretical);
   const disponible = Math.max(0, theoreticalMinutes - agg.indirect - agg.projet);
   const indirectPct = agg.total ? Math.round((agg.indirect/agg.total)*100) : 0;
+  const productionPct = agg.total ? Math.round((agg.production/agg.total)*100) : 0;
+  const projetPct = agg.total ? Math.round((agg.projet/agg.total)*100) : 0;
 
   const evolutionData = useMemo(() => {
     if (period === "jour") return [];
@@ -1125,12 +1127,26 @@ function App() {
             </div>
           </div>
 
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10,marginBottom:20}}>
-            <Kpi label="Total suivi" value={fmt(agg.total)} color={C.text} delta={<Delta curr={agg.total} prev={prevAgg.total} label={prevLabel} />} />
-            <Kpi label="Production (tarifs)" value={fmt(agg.production)} color="#0067C0" delta={<Delta curr={agg.production} prev={prevAgg.production} label={prevLabel} />} />
-            <Kpi label="Charge indirecte" value={fmt(agg.indirect)} sub={`${indirectPct}% du total`} color={C.accent} delta={<Delta curr={agg.indirect} prev={prevAgg.indirect} label={prevLabel} />} />
-            <Kpi label="Projets" value={fmt(agg.projet)} color="#107C10" delta={<Delta curr={agg.projet} prev={prevAgg.projet} label={prevLabel} />} />
-            <Kpi label="Disponible production" value={fmt(disponible)} sub={absentDaysInRange>0 ? `théorique − indirect − projet · ${String(absentDaysInRange).replace(".",",")} j. d'absence exclu${absentDaysInRange>1?"s":""}` : "théorique − indirect − projet"} color={C.muted} />
+          <div style={{marginBottom:20}}>
+            <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:2,letterSpacing:0.3,textTransform:"uppercase"}}>Temps suivi — répartition</div>
+            <div style={{fontSize:11,color:C.faint,marginBottom:10}}>Total suivi = Production + Charge indirecte + Projets</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10}}>
+              <Kpi label="Total suivi" value={fmt(agg.total)} color={C.text} delta={<Delta curr={agg.total} prev={prevAgg.total} label={prevLabel} />} />
+              <Kpi label="Production" sub={`Tarifs + BD articles · ${productionPct}% du total`} value={fmt(agg.production)} color="#0067C0" delta={<Delta curr={agg.production} prev={prevAgg.production} label={prevLabel} />} />
+              <Kpi label="Charge indirecte" value={fmt(agg.indirect)} sub={`${indirectPct}% du total`} color={C.accent} delta={<Delta curr={agg.indirect} prev={prevAgg.indirect} label={prevLabel} />} />
+              <Kpi label="Projets" value={fmt(agg.projet)} sub={`${projetPct}% du total`} color="#107C10" delta={<Delta curr={agg.projet} prev={prevAgg.projet} label={prevLabel} />} />
+            </div>
+          </div>
+
+          <div style={{background:C.panel2,border:`1px dashed ${C.border2}`,borderRadius:4,padding:14,marginBottom:20,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+            <div>
+              <div style={{fontSize:12,fontWeight:600,color:C.muted,letterSpacing:0.3,textTransform:"uppercase"}}>Capacité de production restante</div>
+              <div style={{fontSize:11,color:C.faint,marginTop:2,maxWidth:480}}>
+                Marge théorique encore disponible pour faire de la production — pas du temps déjà réalisé.
+                Calcul : temps théorique{absentDaysInRange>0?` (hors ${String(absentDaysInRange).replace(".",",")} j. d'absence)`:""} − charge indirecte − projets.
+              </div>
+            </div>
+            <div className="mono disp" style={{fontSize:26,fontWeight:700,color:C.muted,whiteSpace:"nowrap"}}>{fmt(disponible)}</div>
           </div>
 
           {agg.total === 0 && !historySearch.trim() ? <div style={{color:C.faint,fontSize:13,padding:"40px 0",textAlign:"center"}}>Aucune saisie sur cette période.</div> : null}
