@@ -514,6 +514,7 @@ function App() {
   const [statusFilter, setStatusFilter] = useState("actives");
   const [catFilter, setCatFilter] = useState(null);
   const [urgentOnly, setUrgentOnly] = useState(false);
+  const [taskView, setTaskView] = useState("liste");
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [timeLogTask, setTimeLogTask] = useState(null);
   const [timeLogMin, setTimeLogMin] = useState(0);
@@ -574,7 +575,7 @@ function App() {
   const addTask = async () => {
     const text = quickText.trim();
     if (!text) return;
-    const task = { id: uid(), text, status: "a_faire", priority: "normale", category: null, created_at: Date.now(), updated_at: Date.now() };
+    const task = { id: uid(), text, status: "a_faire", priority: "normale", important: false, category: null, created_at: Date.now(), updated_at: Date.now() };
     setTasks((prev) => [task, ...prev]);
     setQuickText("");
     const { error } = await sb.from("tasks").insert(task);
@@ -592,6 +593,8 @@ function App() {
     if (error) setSyncError(true);
   };
   const togglePriority = (t) => updateTask(t.id, { priority: t.priority === "urgente" ? "normale" : "urgente" });
+  const toggleImportant = (t) => updateTask(t.id, { important: !t.important });
+  const moveTaskToQuadrant = (id, urgent, important) => updateTask(id, { priority: urgent ? "urgente" : "normale", important });
   const setTaskCategory = (t, cat) => updateTask(t.id, { category: cat || null });
   const setTaskText = (t, text) => updateTask(t.id, { text });
 
@@ -620,12 +623,16 @@ function App() {
   };
 
   const untriagedCount = useMemo(() => tasks.filter((t) => !t.category && t.status !== "fait").length, [tasks]);
-  const visibleTasks = useMemo(() => {
+  const filteredTasks = useMemo(() => {
     let list = tasks;
     if (statusFilter === "actives") list = list.filter((t) => t.status !== "fait");
     else if (statusFilter !== "toutes") list = list.filter((t) => t.status === statusFilter);
     if (catFilter === "none") list = list.filter((t) => !t.category);
     else if (catFilter) list = list.filter((t) => t.category === catFilter);
+    return list;
+  }, [tasks, statusFilter, catFilter]);
+  const visibleTasks = useMemo(() => {
+    let list = filteredTasks;
     if (urgentOnly) list = list.filter((t) => t.priority === "urgente");
     return [...list].sort((a, b) => {
       const sOrder = { a_faire: 0, en_cours: 1, fait: 2 };
@@ -633,7 +640,15 @@ function App() {
       if ((a.priority === "urgente") !== (b.priority === "urgente")) return a.priority === "urgente" ? -1 : 1;
       return b.created_at - a.created_at;
     });
-  }, [tasks, statusFilter, catFilter, urgentOnly]);
+  }, [filteredTasks, urgentOnly]);
+  const matrixQuadrants = useMemo(() => {
+    const q = { faire: [], planifier: [], deleguer: [], eliminer: [] };
+    [...filteredTasks].sort((a,b)=>b.created_at-a.created_at).forEach((t) => {
+      const urgent = t.priority === "urgente", important = !!t.important;
+      (urgent && important ? q.faire : !urgent && important ? q.planifier : urgent && !important ? q.deleguer : q.eliminer).push(t);
+    });
+    return q;
+  }, [filteredTasks]);
   const exportTasksCSV = () => {
     const headers = ["texte","statut","priorite","categorie","cree_le"];
     const escape = (v) => `"${String(v ?? "").replace(/"/g,'""')}"`;
@@ -1183,7 +1198,7 @@ function App() {
       )}
 
       {tab === "taches" && (
-        <div style={{padding:20,maxWidth:800,margin:"0 auto"}}>
+        <div style={{padding:20,maxWidth:taskView==="matrice"?1000:800,margin:"0 auto"}}>
           <div style={{display:"flex",gap:8,marginBottom:16}}>
             <input
               value={quickText}
@@ -1195,6 +1210,13 @@ function App() {
             <button onClick={addTask} style={{padding:"0 20px",borderRadius:12,border:"none",background:C.abysse,color:"#FFFFFF",fontSize:14,fontWeight:600,cursor:"pointer"}}>
               Ajouter
             </button>
+          </div>
+
+          <div style={{display:"flex",gap:4,background:C.panel,borderRadius:999,padding:3,border:`1px solid ${C.border}`,marginBottom:16,width:"fit-content"}}>
+            {[["liste","☰ Liste"],["matrice","▦ Matrice d'Eisenhower"]].map(([k,label]) => (
+              <button key={k} onClick={()=>setTaskView(k)} style={{padding:"6px 14px",borderRadius:999,fontSize:13,
+                background:taskView===k?C.panel2:"transparent", color:taskView===k?C.text:C.muted, border:"none",cursor:"pointer"}}>{label}</button>
+            ))}
           </div>
 
           {untriagedCount > 0 && (
@@ -1211,8 +1233,10 @@ function App() {
                 border:`1px solid ${statusFilter===k?C.abysse:C.border2}`, background:statusFilter===k?`${C.abysse}15`:C.panel, color:statusFilter===k?C.abysse:C.muted, cursor:"pointer"}}>{label}</button>
             ))}
             <div style={{flex:1}} />
-            <button onClick={()=>setUrgentOnly(u=>!u)} style={{padding:"6px 12px",borderRadius:999,fontSize:12,
-              border:`1px solid ${urgentOnly?"#A33327":C.border2}`, background:urgentOnly?"#A3332718":C.panel, color:urgentOnly?"#A33327":C.muted, cursor:"pointer"}}>🔴 Urgentes</button>
+            {taskView==="liste" && (
+              <button onClick={()=>setUrgentOnly(u=>!u)} style={{padding:"6px 12px",borderRadius:999,fontSize:12,
+                border:`1px solid ${urgentOnly?"#A33327":C.border2}`, background:urgentOnly?"#A3332718":C.panel, color:urgentOnly?"#A33327":C.muted, cursor:"pointer"}}>🔴 Urgentes</button>
+            )}
           </div>
 
           <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
@@ -1226,15 +1250,22 @@ function App() {
               border:`1px solid ${catFilter==="none"?C.muted:C.border2}`, background:catFilter==="none"?`${C.muted}18`:C.panel, color:catFilter==="none"?C.text:C.muted, cursor:"pointer"}}>Sans catégorie</button>
           </div>
 
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {visibleTasks.length === 0 && <div style={{color:C.faint,fontSize:13,textAlign:"center",padding:"30px 0"}}>Aucune tâche ici.</div>}
-            {visibleTasks.map((t) => (
-              <TaskRow key={t.id} t={t} editing={editingTaskId===t.id}
-                onCycleStatus={()=>requestStatusCycle(t)} onTogglePriority={()=>togglePriority(t)}
-                onSetCategory={(cat)=>setTaskCategory(t,cat)} onDelete={()=>deleteTask(t.id)}
-                onEditStart={()=>setEditingTaskId(t.id)} onEditSave={(text)=>{setTaskText(t,text);setEditingTaskId(null);}} onEditCancel={()=>setEditingTaskId(null)} />
-            ))}
-          </div>
+          {taskView === "liste" ? (
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {visibleTasks.length === 0 && <div style={{color:C.faint,fontSize:13,textAlign:"center",padding:"30px 0"}}>Aucune tâche ici.</div>}
+              {visibleTasks.map((t) => (
+                <TaskRow key={t.id} t={t} editing={editingTaskId===t.id}
+                  onCycleStatus={()=>requestStatusCycle(t)} onTogglePriority={()=>togglePriority(t)} onToggleImportant={()=>toggleImportant(t)}
+                  onSetCategory={(cat)=>setTaskCategory(t,cat)} onDelete={()=>deleteTask(t.id)}
+                  onEditStart={()=>setEditingTaskId(t.id)} onEditSave={(text)=>{setTaskText(t,text);setEditingTaskId(null);}} onEditCancel={()=>setEditingTaskId(null)} />
+              ))}
+            </div>
+          ) : (
+            <EisenhowerMatrix quadrants={matrixQuadrants} editingTaskId={editingTaskId}
+              onCycleStatus={(t)=>requestStatusCycle(t)} onDelete={(id)=>deleteTask(id)}
+              onEditStart={(id)=>setEditingTaskId(id)} onEditSave={(t,text)=>{setTaskText(t,text);setEditingTaskId(null);}} onEditCancel={()=>setEditingTaskId(null)}
+              onMove={moveTaskToQuadrant} />
+          )}
 
           <div style={{marginTop:24,paddingTop:16,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <span className="mono" style={{fontSize:11,color:C.faint}}>{tasks.length} tâche(s) au total</span>
@@ -1484,7 +1515,7 @@ function DayGauge({todayTotal,gaugeMax,todayEntries,dayTheoretical,absence,absen
     </div>
   </div>;
 }
-function TaskRow({t,editing,onCycleStatus,onTogglePriority,onSetCategory,onDelete,onEditStart,onEditSave,onEditCancel}) {
+function TaskRow({t,editing,onCycleStatus,onTogglePriority,onToggleImportant,onSetCategory,onDelete,onEditStart,onEditSave,onEditCancel}) {
   const s = statusByKey(t.status);
   const cat = t.category ? catByKey(t.category) : null;
   const [draft,setDraft] = useState(t.text);
@@ -1500,6 +1531,10 @@ function TaskRow({t,editing,onCycleStatus,onTogglePriority,onSetCategory,onDelet
 
       <button onClick={onTogglePriority} title="Marquer urgent" style={{background:"none",border:"none",cursor:"pointer",fontSize:15,opacity:t.priority==="urgente"?1:0.25,flexShrink:0,padding:0}}>
         🔴
+      </button>
+
+      <button onClick={onToggleImportant} title="Marquer important" style={{background:"none",border:"none",cursor:"pointer",fontSize:15,opacity:t.important?1:0.25,flexShrink:0,padding:0}}>
+        ⭐
       </button>
 
       <div style={{flex:1,minWidth:0}}>
@@ -1521,6 +1556,86 @@ function TaskRow({t,editing,onCycleStatus,onTogglePriority,onSetCategory,onDelet
       </select>
 
       <button onClick={onDelete} style={{background:"none",border:"none",cursor:"pointer",padding:4}} title="Supprimer">🗑️</button>
+    </div>
+  );
+}
+const EISENHOWER_QUADRANTS = [
+  { key:"faire", title:"🔥 Faire", subtitle:"Urgent & important", color:"#A33327", urgent:true, important:true },
+  { key:"planifier", title:"🎯 Planifier", subtitle:"Important, pas urgent", color:"#015959", urgent:false, important:true },
+  { key:"deleguer", title:"🤝 Déléguer", subtitle:"Urgent, pas important", color:"#F8AC16", urgent:true, important:false },
+  { key:"eliminer", title:"🗑️ Éliminer", subtitle:"Ni urgent, ni important", color:"#8A9793", urgent:false, important:false },
+];
+function EisenhowerMatrix({quadrants,editingTaskId,onCycleStatus,onDelete,onEditStart,onEditSave,onEditCancel,onMove}) {
+  const [dragOverQ, setDragOverQ] = useState(null);
+  const [draggingId, setDraggingId] = useState(null);
+  const axisLabel = (text) => <div style={{display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:600,color:C.faint,textTransform:"uppercase",letterSpacing:0.5,textAlign:"center",padding:4}}>{text}</div>;
+  return (
+    <div>
+      <div style={{display:"grid",gridTemplateColumns:"90px 1fr 1fr",gap:10}}>
+        <div />
+        {axisLabel("⟵ Urgent")}
+        {axisLabel("Pas urgent ⟶")}
+        {axisLabel("Important")}
+        {EISENHOWER_QUADRANTS.slice(0,2).map((q) => renderQuadrant(q))}
+        {axisLabel("Pas important")}
+        {EISENHOWER_QUADRANTS.slice(2,4).map((q) => renderQuadrant(q))}
+      </div>
+    </div>
+  );
+
+  function renderQuadrant(q) {
+    const list = quadrants[q.key];
+    const isOver = dragOverQ === q.key;
+    return (
+      <div key={q.key}
+        onDragOver={(e)=>{e.preventDefault();if(dragOverQ!==q.key)setDragOverQ(q.key);}}
+        onDragLeave={()=>setDragOverQ((k)=>k===q.key?null:k)}
+        onDrop={(e)=>{e.preventDefault();const id=e.dataTransfer.getData("text/plain");if(id)onMove(id,q.urgent,q.important);setDragOverQ(null);setDraggingId(null);}}
+        style={{minHeight:170,background:`${q.color}0d`,border:`2px ${isOver?"solid":"dashed"} ${q.color}${isOver?"":"4d"}`,borderRadius:16,padding:10,
+          display:"flex",flexDirection:"column",gap:6,transition:"border-color .15s ease,background .15s ease"}}>
+        <div style={{marginBottom:2}}>
+          <div style={{fontSize:13,fontWeight:700,color:q.color}}>{q.title} <span className="mono" style={{fontSize:11,fontWeight:400,color:C.faint}}>({list.length})</span></div>
+          <div style={{fontSize:10,color:C.faint}}>{q.subtitle}</div>
+        </div>
+        {list.length === 0 && <div style={{fontSize:11,color:C.faint,fontStyle:"italic",padding:"10px 0",textAlign:"center"}}>Glisse une tâche ici</div>}
+        {list.map((t) => (
+          <MatrixCard key={t.id} t={t} editing={editingTaskId===t.id} dragging={draggingId===t.id}
+            onDragStart={()=>setDraggingId(t.id)} onDragEnd={()=>setDraggingId(null)}
+            onCycleStatus={()=>onCycleStatus(t)} onDelete={()=>onDelete(t.id)}
+            onEditStart={()=>onEditStart(t.id)} onEditSave={(text)=>onEditSave(t,text)} onEditCancel={onEditCancel} />
+        ))}
+      </div>
+    );
+  }
+}
+function MatrixCard({t,editing,dragging,onDragStart,onDragEnd,onCycleStatus,onDelete,onEditStart,onEditSave,onEditCancel}) {
+  const s = statusByKey(t.status);
+  const cat = t.category ? catByKey(t.category) : null;
+  const [draft,setDraft] = useState(t.text);
+  const isDone = t.status === "fait";
+  return (
+    <div draggable
+      onDragStart={(e)=>{e.dataTransfer.setData("text/plain", t.id); e.dataTransfer.effectAllowed="move"; onDragStart();}}
+      onDragEnd={onDragEnd}
+      style={{display:"flex",alignItems:"center",gap:8,padding:"7px 9px",background:C.panel,borderRadius:12,border:`1px solid ${C.border}`,
+        cursor:"grab",opacity:dragging?0.4:1}}>
+      <button onClick={onCycleStatus} title="Changer le statut" style={{
+        width:16,height:16,borderRadius:999,border:`2px solid ${s.color}`,background:isDone?s.color:"transparent",
+        display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",padding:0}}>
+        {isDone && <span style={{color:"#16302E",fontSize:9,lineHeight:1,fontWeight:700}}>✓</span>}
+      </button>
+      {cat && <span style={{width:7,height:7,borderRadius:999,background:cat.color,flexShrink:0}} title={cat.label} />}
+      <div style={{flex:1,minWidth:0}}>
+        {editing ? (
+          <input autoFocus value={draft} onChange={(e)=>setDraft(e.target.value)}
+            onKeyDown={(e)=>{if(e.key==="Enter") onEditSave(draft); if(e.key==="Escape") onEditCancel();}}
+            onBlur={()=>onEditSave(draft)}
+            style={{width:"100%",background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:8,padding:"3px 5px",fontSize:12,color:C.text}} />
+        ) : (
+          <span onClick={onEditStart} style={{fontSize:12,cursor:"text",textDecoration:isDone?"line-through":"none",color:isDone?C.faint:C.text,overflowWrap:"anywhere"}}>{t.text}</span>
+        )}
+      </div>
+      <button onClick={onDelete} style={{background:"none",border:"none",cursor:"pointer",padding:2,fontSize:11,flexShrink:0}} title="Supprimer">🗑️</button>
     </div>
   );
 }
