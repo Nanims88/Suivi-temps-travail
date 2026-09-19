@@ -406,11 +406,13 @@ const CATS = [
     subs: ["Power BI", "Excel / Power Query", "SAP", "Problème outil", "Problème donnée", "Export KPI", "MAJ tempo (BD articles)"] },
   { key: "process", label: "Process", group: "indirect", color: "#038387",
     subs: ["Documentation", "Amélioration processus", "Analyse"] },
+  { key: "reunion", label: "Réunion", group: "indirect", color: "#00B7C3",
+    subs: ["Tarifs", "BD articles", "Projet", "Process", "Urgence", "Support", "Data / Outils", "Recherche / Info", "Hors périmètre", "Autre"] },
   { key: "projets", label: "Projets", group: "projet", color: "#107C10", subs: ["Projet"] },
   { key: "horsperimetre", label: "Sujet hors périmètre", group: "indirect", color: "#69797E",
     subs: ["Sujet hors périmètre"] },
   { key: "parasite", label: "Sollicitations & imprévus", group: "indirect", color: "#D13438",
-    subs: ["Urgence", "Interruption", "Réunion", "Demande imprévue",
+    subs: ["Urgence", "Interruption", "Demande imprévue",
       "Sollicitation — Appro", "Sollicitation — Compta", "Sollicitation — Achats", "Sollicitation — Direction", "Sollicitation — Réception", "Sollicitation — Logistique", "Sollicitation — ADV"] },
 ];
 const catByKey = (k) => CATS.find((c) => c.key === k);
@@ -432,7 +434,7 @@ const PRESETS = [
   { label: "Mails", cat: "support", sub: "Traitement mails" },
   { label: "Export KPI", cat: "outils", sub: "Export KPI" },
   { label: "MAJ tempo", cat: "outils", sub: "MAJ tempo (BD articles)" },
-  { label: "Réunion", cat: "parasite", sub: "Réunion" },
+  { label: "Réunion", cat: "reunion" },
   { label: "Interruption", cat: "parasite", sub: "Interruption" },
   { label: "Projet", cat: "projets", sub: "Projet" },
   { label: "Hors périmètre", cat: "horsperimetre", sub: "Sujet hors périmètre" },
