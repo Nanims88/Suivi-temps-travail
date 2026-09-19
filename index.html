@@ -866,18 +866,6 @@ function App() {
 
   const pieData = CATS.map((c) => ({ key: c.key, name: c.label, value: agg.byCat[c.key], color: c.color })).filter((d) => d.value > 0);
   const topConsumers = [...CATS].map((c) => ({ key: c.key, name: c.label, minutes: agg.byCat[c.key], prevMinutes: prevAgg.byCat[c.key], color: c.color })).filter((d) => d.minutes>0).sort((a,b)=>b.minutes-a.minutes).slice(0,5);
-  const theoreticalMinutesRaw = period==="jour" ? dayTheoretical
-    : period==="semaine" ? settings.weeklyHours*60
-    : period==="annee" ? Math.round(settings.weeklyHours*60*getWeeksInYear(refDate))
-    : Math.round(settings.weeklyHours*60*getWeeksInMonth(refDate));
-  const absentDaysInRange = useMemo(() => {
-    const [s,e] = range; const sIso = toISO(s), eIso = toISO(e);
-    return Object.entries(dayLogs)
-      .filter(([date, log]) => log && log.absence && date >= sIso && date <= eIso)
-      .reduce((sum, [,log]) => sum + (log.absence_duree === "matin" || log.absence_duree === "apres-midi" ? 0.5 : 1), 0);
-  }, [dayLogs, range]);
-  const theoreticalMinutes = Math.max(0, theoreticalMinutesRaw - absentDaysInRange * dayTheoretical);
-  const disponible = Math.max(0, theoreticalMinutes - agg.indirect - agg.projet);
   const indirectPct = agg.total ? Math.round((agg.indirect/agg.total)*100) : 0;
   const productionPct = agg.total ? Math.round((agg.production/agg.total)*100) : 0;
   const projetPct = agg.total ? Math.round((agg.projet/agg.total)*100) : 0;
@@ -935,7 +923,7 @@ function App() {
           <TabBtn active={tab==="saisie"} onClick={()=>setTab("saisie")}>Saisie</TabBtn>
           <TabBtn active={tab==="dashboard"} onClick={()=>setTab("dashboard")}>Tableau de bord</TabBtn>
           <TabBtn active={tab==="taches"} onClick={()=>setTab("taches")}>Tâches{untriagedCount>0?` (${untriagedCount})`:""}</TabBtn>
-          <button onClick={()=>setShowSettings(s=>!s)} style={{padding:8,borderRadius:3,border:`1px solid ${C.border}`,background:C.panel,cursor:"pointer"}}>⚙️</button>
+          <button onClick={()=>setShowSettings(s=>!s)} style={{padding:8,borderRadius:12,border:`1px solid ${C.border}`,background:C.panel,cursor:"pointer"}}>⚙️</button>
         </div>
       </div>
 
@@ -944,22 +932,22 @@ function App() {
           <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
             <span style={{fontSize:13,color:C.muted}}>Temps théorique hebdo (h)</span>
             <input type="number" value={settings.weeklyHours} onChange={(e)=>persistSettings({weeklyHours:Number(e.target.value)||0})}
-              className="mono" style={{width:64,background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:3,padding:"6px 8px",color:C.text}} />
+              className="mono" style={{width:64,background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:12,padding:"6px 8px",color:C.text}} />
             <span className="mono" style={{fontSize:12,color:C.faint}}>{entries.length} saisie(s) en base</span>
             <div style={{flex:1}} />
-            <button onClick={resetAll} style={{fontSize:12,color:"#A33327",background:"transparent",border:"1px solid #A3332755",borderRadius:3,padding:"6px 10px",cursor:"pointer"}}>Réinitialiser</button>
+            <button onClick={resetAll} style={{fontSize:12,color:"#A33327",background:"transparent",border:"1px solid #A3332755",borderRadius:12,padding:"6px 10px",cursor:"pointer"}}>Réinitialiser</button>
           </div>
 
           <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${C.border2}`}}>
             <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:6,textTransform:"uppercase",letterSpacing:0.3}}>Export des données</div>
             <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-              <button onClick={exportCSV} style={{fontSize:12,color:C.abysse,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:3,padding:"6px 12px",cursor:"pointer"}}>
+              <button onClick={exportCSV} style={{fontSize:12,color:C.abysse,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:12,padding:"6px 12px",cursor:"pointer"}}>
                 📊 Exporter en CSV (Excel / Power BI)
               </button>
-              <button onClick={exportJSON} style={{fontSize:12,color:C.abysse,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:3,padding:"6px 12px",cursor:"pointer"}}>
+              <button onClick={exportJSON} style={{fontSize:12,color:C.abysse,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:12,padding:"6px 12px",cursor:"pointer"}}>
                 💾 Sauvegarde complète (JSON)
               </button>
-              <label style={{fontSize:12,color:C.abysse,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:3,padding:"6px 12px",cursor:"pointer"}}>
+              <label style={{fontSize:12,color:C.abysse,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:12,padding:"6px 12px",cursor:"pointer"}}>
                 ⤴️ Restaurer depuis un JSON
                 <input type="file" accept=".json" style={{display:"none"}} onChange={(e)=>{if(e.target.files[0]) importJSON(e.target.files[0]); e.target.value="";}} />
               </label>
@@ -974,12 +962,12 @@ function App() {
           <TimeClock log={todayLog} onChange={(l)=>persistDayLog(todayIso,l)} todayTotal={todayTotal} onLogEcart={addRawEntry} />
           <DayGauge todayTotal={todayTotal} gaugeMax={gaugeMax} todayEntries={todayEntries} dayTheoretical={dayTheoretical} absence={todayLog?.absence} absenceDuree={todayLog?.absence_duree} />
 
-          <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:16,padding:"10px 14px",borderRadius:3,
+          <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:16,padding:"10px 14px",borderRadius:12,
             border:`1px solid ${dayLogs[entryDate]?.absence?"#A3332755":entryDate===todayIso?C.border:"#F8AC1655"}`,
             background:dayLogs[entryDate]?.absence?"#A3332712":entryDate===todayIso?C.panel:"#F8AC1612"}}>
             <span style={{fontSize:12,color:C.muted}}>Je saisis du temps pour :</span>
             <input type="date" value={entryDate} max={todayIso} onChange={(e)=>setEntryDate(e.target.value||todayIso)} className="mono"
-              style={{padding:"6px 8px",borderRadius:3,border:`1px solid ${C.border2}`,fontSize:13,color:C.text}} />
+              style={{padding:"6px 8px",borderRadius:12,border:`1px solid ${C.border2}`,fontSize:13,color:C.text}} />
             {entryDate !== todayIso && !dayLogs[entryDate]?.absence && (
               <span style={{fontSize:12,color:"#8A5D00"}}>⚠️ pas aujourd'hui — les saisies ci-dessous iront sur cette date</span>
             )}
@@ -987,12 +975,12 @@ function App() {
             {dayLogs[entryDate]?.absence ? (
               <>
                 <span style={{fontSize:12,fontWeight:600,color:"#A33327"}}>🚫 Absence — {dayLogs[entryDate].absence} ({absenceDureeLabel(dayLogs[entryDate].absence_duree)})</span>
-                <button onClick={()=>clearAbsence(entryDate)} style={{marginLeft:"auto",fontSize:12,color:C.muted,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:3,padding:"5px 10px",cursor:"pointer"}}>Retirer l'absence</button>
+                <button onClick={()=>clearAbsence(entryDate)} style={{marginLeft:"auto",fontSize:12,color:C.muted,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:12,padding:"5px 10px",cursor:"pointer"}}>Retirer l'absence</button>
               </>
             ) : (
               <div style={{marginLeft:"auto",display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
                 <select value={absenceTypeDraft} onChange={(e)=>setAbsenceTypeDraft(e.target.value)}
-                  style={{fontSize:12,color:C.muted,background:C.panel,border:`1px solid ${C.border2}`,borderRadius:3,padding:"5px 8px",cursor:"pointer"}}>
+                  style={{fontSize:12,color:C.muted,background:C.panel,border:`1px solid ${C.border2}`,borderRadius:12,padding:"5px 8px",cursor:"pointer"}}>
                   <option value="">Marquer une absence…</option>
                   <option value="Congés">Congés</option>
                   <option value="Arrêt maladie">Arrêt maladie</option>
@@ -1002,27 +990,27 @@ function App() {
                 {absenceTypeDraft && (
                   <>
                     <select value={absenceDureeDraft} onChange={(e)=>setAbsenceDureeDraft(e.target.value)}
-                      style={{fontSize:12,color:C.muted,background:C.panel,border:`1px solid ${C.border2}`,borderRadius:3,padding:"5px 8px",cursor:"pointer"}}>
+                      style={{fontSize:12,color:C.muted,background:C.panel,border:`1px solid ${C.border2}`,borderRadius:12,padding:"5px 8px",cursor:"pointer"}}>
                       <option value="journee">Journée entière</option>
                       <option value="matin">Demi-journée — matin</option>
                       <option value="apres-midi">Demi-journée — après-midi</option>
                     </select>
                     <button onClick={()=>{setAbsence(entryDate,absenceTypeDraft,absenceDureeDraft);setAbsenceTypeDraft("");setAbsenceDureeDraft("journee");}}
-                      style={{fontSize:12,fontWeight:600,color:"#fff",background:"#A33327",border:"none",borderRadius:3,padding:"5px 12px",cursor:"pointer"}}>Valider</button>
+                      style={{fontSize:12,fontWeight:600,color:"#fff",background:"#A33327",border:"none",borderRadius:12,padding:"5px 12px",cursor:"pointer"}}>Valider</button>
                   </>
                 )}
               </div>
             )}
 
             {entryDate !== todayIso && (
-              <button onClick={()=>setEntryDate(todayIso)} style={{fontSize:12,color:C.abysse,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:3,padding:"5px 10px",cursor:"pointer"}}>Revenir à aujourd'hui</button>
+              <button onClick={()=>setEntryDate(todayIso)} style={{fontSize:12,color:C.abysse,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:12,padding:"5px 10px",cursor:"pointer"}}>Revenir à aujourd'hui</button>
             )}
           </div>
 
           <Section title="Saisie ultra-rapide" subtitle="1 clic pour préremplir, 1 clic pour la durée">
             <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
               {PRESETS.map((p) => (
-                <button key={p.label} onClick={()=>applyPreset(p)} className="chip" style={{padding:"8px 14px",borderRadius:3,fontSize:13,
+                <button key={p.label} onClick={()=>applyPreset(p)} className="chip" style={{padding:"8px 14px",borderRadius:999,fontSize:13,
                   border:`1px solid ${selCat===p.cat&&selSub===p.sub?catByKey(p.cat).color:C.border2}`,
                   background:selCat===p.cat&&selSub===p.sub?`${catByKey(p.cat).color}22`:C.panel,
                   color:selCat===p.cat&&selSub===p.sub?catByKey(p.cat).color:C.text}}>+ {p.label}</button>
@@ -1033,7 +1021,7 @@ function App() {
           <Section title="Catégorie">
             <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
               {CATS.map((c) => (
-                <button key={c.key} onClick={()=>{setSelCat(c.key);setSelSub(null);}} className="chip" style={{padding:"9px 14px",borderRadius:3,fontSize:13,fontWeight:500,
+                <button key={c.key} onClick={()=>{setSelCat(c.key);setSelSub(null);}} className="chip" style={{padding:"9px 14px",borderRadius:999,fontSize:13,fontWeight:500,
                   border:`1px solid ${selCat===c.key?c.color:C.border2}`, background:selCat===c.key?`${c.color}22`:C.panel, color:selCat===c.key?c.color:C.text}}>{c.label}</button>
               ))}
             </div>
@@ -1043,7 +1031,7 @@ function App() {
             <Section title="Sous-catégorie">
               <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
                 {catByKey(selCat).subs.map((s) => (
-                  <button key={s} onClick={()=>setSelSub(s)} style={{padding:"8px 13px",borderRadius:3,fontSize:13,
+                  <button key={s} onClick={()=>setSelSub(s)} style={{padding:"8px 13px",borderRadius:999,fontSize:13,
                     border:`1px solid ${selSub===s?catByKey(selCat).color:C.border}`, background:selSub===s?`${catByKey(selCat).color}18`:"transparent",
                     color:selSub===s?catByKey(selCat).color:C.muted}}>{s}</button>
                 ))}
@@ -1055,15 +1043,15 @@ function App() {
             <Section title="Projet" subtitle="Sélectionne un projet existant ou ajoute-en un nouveau">
               <div style={{display:"flex",flexWrap:"wrap",gap:8,alignItems:"center"}}>
                 {projects.map((p) => (
-                  <button key={p} onClick={()=>setSubject(p)} style={{padding:"8px 13px",borderRadius:3,fontSize:13,
+                  <button key={p} onClick={()=>setSubject(p)} style={{padding:"8px 13px",borderRadius:999,fontSize:13,
                     border:`1px solid ${subject===p?"#107C10":C.border2}`, background:subject===p?"#107C1022":C.panel, color:subject===p?"#107C10":C.text}}>{p}</button>
                 ))}
                 <div style={{display:"flex",gap:4}}>
                   <input placeholder="+ nouveau projet" value={newProject} onChange={(e)=>setNewProject(e.target.value)}
                     onKeyDown={(e)=>{if(e.key==="Enter"&&newProject.trim()){addProject(newProject);setNewProject("");}}}
-                    style={{background:C.panel,border:`1px solid ${C.border2}`,borderRadius:3,padding:"8px 12px",fontSize:13,color:C.text,width:150}} />
+                    style={{background:C.panel,border:`1px solid ${C.border2}`,borderRadius:12,padding:"8px 12px",fontSize:13,color:C.text,width:150}} />
                   <button onClick={()=>{if(newProject.trim()){addProject(newProject);setNewProject("");}}}
-                    style={{background:C.panel,border:`1px solid ${C.border2}`,borderRadius:3,padding:8}}>+</button>
+                    style={{background:C.panel,border:`1px solid ${C.border2}`,borderRadius:12,padding:8}}>+</button>
                 </div>
               </div>
             </Section>
@@ -1079,10 +1067,10 @@ function App() {
                   <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>
                     {selCat !== "projets" && (
                       <input placeholder="Sujet" value={subject} onChange={(e)=>setSubject(e.target.value)}
-                        style={{flex:"1 1 200px",background:C.panel,border:`1px solid ${C.border2}`,borderRadius:3,padding:"8px 10px",fontSize:13,color:C.text}} />
+                        style={{flex:"1 1 200px",background:C.panel,border:`1px solid ${C.border2}`,borderRadius:12,padding:"8px 10px",fontSize:13,color:C.text}} />
                     )}
                     <input placeholder="Note" value={comment} onChange={(e)=>setComment(e.target.value)}
-                      style={{flex:"1 1 200px",background:C.panel,border:`1px solid ${C.border2}`,borderRadius:3,padding:"8px 10px",fontSize:13,color:C.text}} />
+                      style={{flex:"1 1 200px",background:C.panel,border:`1px solid ${C.border2}`,borderRadius:12,padding:"8px 10px",fontSize:13,color:C.text}} />
                   </div>
                 )}
               </div>
@@ -1090,12 +1078,12 @@ function App() {
               <Section title="Durée — clic = ajout immédiat">
                 <div style={{display:"flex",flexWrap:"wrap",gap:8,alignItems:"center"}}>
                   {DURATIONS.map((m) => (
-                    <button key={m} onClick={()=>addEntry(m)} style={{padding:"10px 16px",borderRadius:3,fontSize:14,fontWeight:600,
+                    <button key={m} onClick={()=>addEntry(m)} style={{padding:"10px 16px",borderRadius:999,fontSize:14,fontWeight:600,
                       border:`1px solid ${catByKey(selCat).color}`, background:`${catByKey(selCat).color}18`, color:catByKey(selCat).color}}>{fmt(m)}</button>
                   ))}
                   <input type="number" placeholder="autre" value={customMin} onChange={(e)=>setCustomMin(e.target.value)} className="mono"
-                    style={{width:64,background:C.panel,border:`1px solid ${C.border2}`,borderRadius:3,padding:"9px 8px",fontSize:13,color:C.text}} />
-                  <button onClick={()=>addEntry(Number(customMin))} disabled={!customMin} style={{padding:10,borderRadius:3,border:`1px solid ${C.border2}`,background:C.panel,opacity:customMin?1:0.4}}>+</button>
+                    style={{width:64,background:C.panel,border:`1px solid ${C.border2}`,borderRadius:12,padding:"9px 8px",fontSize:13,color:C.text}} />
+                  <button onClick={()=>addEntry(Number(customMin))} disabled={!customMin} style={{padding:10,borderRadius:12,border:`1px solid ${C.border2}`,background:C.panel,opacity:customMin?1:0.4}}>+</button>
                 </div>
               </Section>
             </>
@@ -1116,16 +1104,16 @@ function App() {
       {tab === "dashboard" && (
         <div style={{padding:20,maxWidth:1000,margin:"0 auto"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12,marginBottom:16}}>
-            <div style={{display:"flex",gap:4,background:C.panel,borderRadius:3,padding:3,border:`1px solid ${C.border}`}}>
+            <div style={{display:"flex",gap:4,background:C.panel,borderRadius:999,padding:3,border:`1px solid ${C.border}`}}>
               {["jour","semaine","mois","annee"].map((p) => (
-                <button key={p} onClick={()=>setPeriod(p)} style={{padding:"6px 14px",borderRadius:3,fontSize:13,textTransform:"capitalize",
+                <button key={p} onClick={()=>setPeriod(p)} style={{padding:"6px 14px",borderRadius:999,fontSize:13,textTransform:"capitalize",
                   background:period===p?C.panel2:"transparent", color:period===p?C.text:C.muted, border:"none",cursor:"pointer"}}>{p==="annee"?"Année":p}</button>
               ))}
             </div>
             <div style={{display:"flex",alignItems:"center",gap:12}}>
-              <button onClick={()=>navigate(-1)} style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:3,padding:6,cursor:"pointer"}}>◀</button>
+              <button onClick={()=>navigate(-1)} style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:12,padding:6,cursor:"pointer"}}>◀</button>
               <span className="mono" style={{fontSize:13,color:C.muted,textTransform:"capitalize",minWidth:160,textAlign:"center"}}>{periodLabel()}</span>
-              <button onClick={()=>navigate(1)} style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:3,padding:6,cursor:"pointer"}}>▶</button>
+              <button onClick={()=>navigate(1)} style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:12,padding:6,cursor:"pointer"}}>▶</button>
             </div>
           </div>
 
@@ -1138,17 +1126,6 @@ function App() {
               <Kpi label="Charge indirecte" value={fmt(agg.indirect)} sub={`${indirectPct}% du total`} color={C.accent} delta={<Delta curr={agg.indirect} prev={prevAgg.indirect} label={prevLabel} />} />
               <Kpi label="Projets" value={fmt(agg.projet)} sub={`${projetPct}% du total`} color="#107C10" delta={<Delta curr={agg.projet} prev={prevAgg.projet} label={prevLabel} />} />
             </div>
-          </div>
-
-          <div style={{background:C.panel2,border:`1px dashed ${C.border2}`,borderRadius:4,padding:14,marginBottom:20,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
-            <div>
-              <div style={{fontSize:12,fontWeight:600,color:C.muted,letterSpacing:0.3,textTransform:"uppercase"}}>Capacité de production restante</div>
-              <div style={{fontSize:11,color:C.faint,marginTop:2,maxWidth:480}}>
-                Marge théorique encore disponible pour faire de la production — pas du temps déjà réalisé.
-                Calcul : temps théorique{absentDaysInRange>0?` (hors ${String(absentDaysInRange).replace(".",",")} j. d'absence)`:""} − charge indirecte − projets.
-              </div>
-            </div>
-            <div className="mono disp" style={{fontSize:26,fontWeight:700,color:C.muted,whiteSpace:"nowrap"}}>{fmt(disponible)}</div>
           </div>
 
           {agg.total === 0 && !historySearch.trim() ? <div style={{color:C.faint,fontSize:13,padding:"40px 0",textAlign:"center"}}>Aucune saisie sur cette période.</div> : null}
@@ -1169,8 +1146,8 @@ function App() {
                             <span className="mono" style={{color:C.text}}>{fmt(d.minutes)}</span>
                           </span>
                         </div>
-                        <div style={{height:6,background:C.panel2,borderRadius:4}}>
-                          <div style={{height:6,borderRadius:4,background:d.color,width:`${(d.minutes/topConsumers[0].minutes)*100}%`}} />
+                        <div style={{height:6,background:C.panel2,borderRadius:18}}>
+                          <div style={{height:6,borderRadius:18,background:d.color,width:`${(d.minutes/topConsumers[0].minutes)*100}%`}} />
                         </div>
                       </div>
                     ))}
@@ -1190,7 +1167,7 @@ function App() {
             <div style={{marginBottom:10}}>
               <input type="text" value={historySearch} onChange={(e)=>setHistorySearch(e.target.value)}
                 placeholder="🔍 Rechercher dans tout l'historique — sujet, commentaire, catégorie…"
-                style={{width:"100%",boxSizing:"border-box",background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:3,padding:"9px 10px",fontSize:13,color:C.text}} />
+                style={{width:"100%",boxSizing:"border-box",background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:12,padding:"9px 10px",fontSize:13,color:C.text}} />
               {historySearch.trim() && <div style={{fontSize:11,color:C.faint,marginTop:5}}>Recherche sur toutes les périodes, indépendamment du filtre Jour/Semaine/Mois/Année ci-dessus.</div>}
             </div>
             <div style={{maxHeight:320,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
@@ -1213,16 +1190,16 @@ function App() {
               onChange={(e)=>setQuickText(e.target.value)}
               onKeyDown={(e)=>{if(e.key==="Enter") addTask();}}
               placeholder="Note ce à quoi tu penses… (Entrée pour ajouter)"
-              style={{flex:1,background:C.panel,border:`1px solid ${C.border2}`,borderRadius:3,padding:"12px 14px",fontSize:15,color:C.text}}
+              style={{flex:1,background:C.panel,border:`1px solid ${C.border2}`,borderRadius:12,padding:"12px 14px",fontSize:15,color:C.text}}
             />
-            <button onClick={addTask} style={{padding:"0 20px",borderRadius:3,border:"none",background:C.abysse,color:"#FFFFFF",fontSize:14,fontWeight:600,cursor:"pointer"}}>
+            <button onClick={addTask} style={{padding:"0 20px",borderRadius:12,border:"none",background:C.abysse,color:"#FFFFFF",fontSize:14,fontWeight:600,cursor:"pointer"}}>
               Ajouter
             </button>
           </div>
 
           {untriagedCount > 0 && (
             <button onClick={()=>{setCatFilter("none");setStatusFilter("actives");}} className="chip" style={{
-              display:"flex",alignItems:"center",gap:8,width:"100%",textAlign:"left",marginBottom:16,padding:"10px 14px",borderRadius:3,
+              display:"flex",alignItems:"center",gap:8,width:"100%",textAlign:"left",marginBottom:16,padding:"10px 14px",borderRadius:12,
               border:"1px solid #F8AC1655",background:"#F8AC1615",color:"#8A5D00",fontSize:13,cursor:"pointer"}}>
               🗂️ <b>{untriagedCount}</b> tâche{untriagedCount>1?"s":""} à trier (sans catégorie)
             </button>
@@ -1230,22 +1207,22 @@ function App() {
 
           <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
             {[["actives","Actives"],["a_faire","À faire"],["en_cours","En cours"],["fait","Fait"],["toutes","Toutes"]].map(([k,label]) => (
-              <button key={k} onClick={()=>setStatusFilter(k)} style={{padding:"6px 12px",borderRadius:3,fontSize:12,
+              <button key={k} onClick={()=>setStatusFilter(k)} style={{padding:"6px 12px",borderRadius:999,fontSize:12,
                 border:`1px solid ${statusFilter===k?C.abysse:C.border2}`, background:statusFilter===k?`${C.abysse}15`:C.panel, color:statusFilter===k?C.abysse:C.muted, cursor:"pointer"}}>{label}</button>
             ))}
             <div style={{flex:1}} />
-            <button onClick={()=>setUrgentOnly(u=>!u)} style={{padding:"6px 12px",borderRadius:3,fontSize:12,
+            <button onClick={()=>setUrgentOnly(u=>!u)} style={{padding:"6px 12px",borderRadius:999,fontSize:12,
               border:`1px solid ${urgentOnly?"#A33327":C.border2}`, background:urgentOnly?"#A3332718":C.panel, color:urgentOnly?"#A33327":C.muted, cursor:"pointer"}}>🔴 Urgentes</button>
           </div>
 
           <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
-            <button onClick={()=>setCatFilter(null)} style={{padding:"5px 10px",borderRadius:3,fontSize:11,
+            <button onClick={()=>setCatFilter(null)} style={{padding:"5px 10px",borderRadius:999,fontSize:11,
               border:`1px solid ${!catFilter?C.abysse:C.border2}`, background:!catFilter?`${C.abysse}15`:C.panel, color:!catFilter?C.abysse:C.muted, cursor:"pointer"}}>Toutes catégories</button>
             {CATS.map((c) => (
-              <button key={c.key} onClick={()=>setCatFilter(c.key)} style={{padding:"5px 10px",borderRadius:3,fontSize:11,
+              <button key={c.key} onClick={()=>setCatFilter(c.key)} style={{padding:"5px 10px",borderRadius:999,fontSize:11,
                 border:`1px solid ${catFilter===c.key?c.color:C.border2}`, background:catFilter===c.key?`${c.color}18`:C.panel, color:catFilter===c.key?c.color:C.muted, cursor:"pointer"}}>{c.label}</button>
             ))}
-            <button onClick={()=>setCatFilter("none")} style={{padding:"5px 10px",borderRadius:3,fontSize:11,
+            <button onClick={()=>setCatFilter("none")} style={{padding:"5px 10px",borderRadius:999,fontSize:11,
               border:`1px solid ${catFilter==="none"?C.muted:C.border2}`, background:catFilter==="none"?`${C.muted}18`:C.panel, color:catFilter==="none"?C.text:C.muted, cursor:"pointer"}}>Sans catégorie</button>
           </div>
 
@@ -1261,36 +1238,36 @@ function App() {
 
           <div style={{marginTop:24,paddingTop:16,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <span className="mono" style={{fontSize:11,color:C.faint}}>{tasks.length} tâche(s) au total</span>
-            <button onClick={exportTasksCSV} style={{fontSize:12,color:C.abysse,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:3,padding:"6px 12px",cursor:"pointer"}}>📊 Exporter en CSV</button>
+            <button onClick={exportTasksCSV} style={{fontSize:12,color:C.abysse,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:12,padding:"6px 12px",cursor:"pointer"}}>📊 Exporter en CSV</button>
           </div>
         </div>
       )}
 
       {timeLogTask && (
         <div style={{position:"fixed",inset:0,background:"rgba(22,48,46,.45)",display:"flex",alignItems:"center",justifyContent:"center",padding:20,zIndex:50}}>
-          <div style={{background:C.panel,borderRadius:4,width:"min(420px,94vw)",overflow:"hidden"}}>
+          <div style={{background:C.panel,borderRadius:18,width:"min(420px,94vw)",overflow:"hidden"}}>
             <div style={{background:C.abysse,color:"#fff",padding:"14px 18px",fontWeight:700}}>Terminer la tâche</div>
             <div style={{padding:18}}>
               <div style={{fontSize:14,color:C.text,marginBottom:14}}>{timeLogTask.text}</div>
               <div style={{fontSize:12,color:C.muted,marginBottom:6}}>Combien de temps y as-tu passé ?</div>
               <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
                 <input type="number" min="1" value={timeLogMin} onChange={(e)=>setTimeLogMin(Math.max(0,parseInt(e.target.value)||0))} className="mono"
-                  style={{width:70,padding:"8px 8px",borderRadius:3,border:`1px solid ${C.border2}`,fontSize:14}} />
+                  style={{width:70,padding:"8px 8px",borderRadius:12,border:`1px solid ${C.border2}`,fontSize:14}} />
                 <span style={{alignSelf:"center",fontSize:12,color:C.muted}}>minutes, catégorisées en</span>
               </div>
               <div style={{display:"flex",gap:8,marginBottom:18,flexWrap:"wrap"}}>
                 <select value={timeLogCat} onChange={(e)=>{const c=e.target.value;setTimeLogCat(c);setTimeLogSub(catByKey(c).subs[0]);}}
-                  style={{flex:"1 1 140px",padding:"8px 8px",borderRadius:3,border:`1px solid ${C.border2}`,fontSize:13}}>
+                  style={{flex:"1 1 140px",padding:"8px 8px",borderRadius:12,border:`1px solid ${C.border2}`,fontSize:13}}>
                   {CATS.map((c)=><option key={c.key} value={c.key}>{c.label}</option>)}
                 </select>
                 <select value={timeLogSub} onChange={(e)=>setTimeLogSub(e.target.value)}
-                  style={{flex:"1 1 140px",padding:"8px 8px",borderRadius:3,border:`1px solid ${C.border2}`,fontSize:13}}>
+                  style={{flex:"1 1 140px",padding:"8px 8px",borderRadius:12,border:`1px solid ${C.border2}`,fontSize:13}}>
                   {catByKey(timeLogCat).subs.map((s)=><option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
               <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
-                <button onClick={skipTimeLog} style={{fontSize:12,color:C.muted,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:3,padding:"8px 12px",cursor:"pointer"}}>Terminer sans compter de temps</button>
-                <button onClick={confirmTimeLog} style={{fontSize:13,fontWeight:600,color:"#fff",background:C.abysse,border:"none",borderRadius:3,padding:"8px 16px",cursor:"pointer"}}>Valider</button>
+                <button onClick={skipTimeLog} style={{fontSize:12,color:C.muted,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:12,padding:"8px 12px",cursor:"pointer"}}>Terminer sans compter de temps</button>
+                <button onClick={confirmTimeLog} style={{fontSize:13,fontWeight:600,color:"#fff",background:C.abysse,border:"none",borderRadius:12,padding:"8px 16px",cursor:"pointer"}}>Valider</button>
               </div>
             </div>
           </div>
@@ -1299,7 +1276,7 @@ function App() {
 
       {drillCat && drillBreakdown && (
         <div style={{position:"fixed",inset:0,background:"rgba(22,48,46,.45)",display:"flex",alignItems:"center",justifyContent:"center",padding:20,zIndex:50}} onClick={()=>setDrillCat(null)}>
-          <div style={{background:C.panel,borderRadius:4,width:"min(640px,94vw)",maxHeight:"86vh",display:"flex",flexDirection:"column"}} onClick={(e)=>e.stopPropagation()}>
+          <div style={{background:C.panel,borderRadius:18,width:"min(640px,94vw)",maxHeight:"86vh",display:"flex",flexDirection:"column"}} onClick={(e)=>e.stopPropagation()}>
             <div style={{background:C.abysse,color:"#fff",padding:"14px 18px",fontWeight:700,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <span>{catByKey(drillCat).label} — détail par sous-catégorie</span>
               <button onClick={()=>setDrillCat(null)} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",fontSize:16}}>✕</button>
@@ -1331,7 +1308,7 @@ function App() {
       )}
 
       {toast && (
-        <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:3,padding:"10px 16px",fontSize:13,color:C.text,boxShadow:"0 1px 3px rgba(1,89,89,0.18)"}}>
+        <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:12,padding:"10px 16px",fontSize:13,color:C.text,boxShadow:"0 1px 3px rgba(1,89,89,0.18)"}}>
           ✓ {toast}
         </div>
       )}
@@ -1341,7 +1318,7 @@ function App() {
 
 /* ======================= SUBCOMPONENTS ======================= */
 function TabBtn({active,onClick,children}) {
-  return <button onClick={onClick} style={{padding:"8px 16px",borderRadius:3,fontSize:13,fontWeight:500,
+  return <button onClick={onClick} style={{padding:"8px 16px",borderRadius:999,fontSize:13,fontWeight:500,
     background:active?C.panel2:"transparent", border:`1px solid ${active?C.border2:"transparent"}`, color:active?C.text:C.muted, cursor:"pointer"}}>{children}</button>;
 }
 function Section({title,subtitle,children}) {
@@ -1352,13 +1329,13 @@ function Section({title,subtitle,children}) {
   </div>;
 }
 function Panel({title,children}) {
-  return <div style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:4,padding:16}}>
+  return <div style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:18,padding:16}}>
     <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:10,letterSpacing:0.3,textTransform:"uppercase"}}>{title}</div>
     {children}
   </div>;
 }
 function Kpi({label,value,sub,color,delta}) {
-  return <div style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:3,padding:"12px 14px"}}>
+  return <div style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:16,padding:"12px 14px"}}>
     <div style={{fontSize:11,color:C.faint,marginBottom:6}}>{label}</div>
     <div className="mono disp" style={{fontSize:20,fontWeight:700,color}}>{value}</div>
     {sub && <div style={{fontSize:10,color:C.faint,marginTop:3}}>{sub}</div>}
@@ -1375,41 +1352,68 @@ function Delta({curr,prev,label}) {
   return <span style={{fontSize:10,color:C.muted}}>{up?"▲":"▼"} {pct}% vs {label}</span>;
 }
 function SimplePie({data,onSlice}) {
+  const [hoverKey, setHoverKey] = useState(null);
   const total = data.reduce((s,d)=>s+d.value,0);
+  const R = 64, CX = 90, CY = 90, STROKE = 24, GAP = 0.035;
   let cumulative = 0;
-  const R = 70, CX = 90, CY = 90;
   const slices = data.map((d) => {
-    const start = (cumulative/total)*2*Math.PI; cumulative += d.value;
-    const end = (cumulative/total)*2*Math.PI;
+    const startRaw = (cumulative/total)*2*Math.PI; cumulative += d.value;
+    const endRaw = (cumulative/total)*2*Math.PI;
+    const pad = Math.min(GAP, (endRaw-startRaw)/3);
+    const start = startRaw + pad, end = endRaw - pad;
     const x1 = CX+R*Math.sin(start), y1 = CY-R*Math.cos(start);
     const x2 = CX+R*Math.sin(end), y2 = CY-R*Math.cos(end);
     const large = end-start > Math.PI ? 1 : 0;
-    return { path: `M${CX},${CY} L${x1},${y1} A${R},${R} 0 ${large} 1 ${x2},${y2} Z`, color: d.color, key: d.key };
+    return { path: `M${x1},${y1} A${R},${R} 0 ${large} 1 ${x2},${y2}`, color: d.color, key: d.key, name: d.name, value: d.value, pct: Math.round((d.value/total)*100) };
   });
+  const hovered = slices.find((s) => s.key === hoverKey);
   return <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
     <svg width="180" height="180" viewBox="0 0 180 180">
-      {slices.map((s,i) => <path key={i} d={s.path} fill={s.color} stroke={C.panel} strokeWidth="2" style={{cursor:onSlice?"pointer":"default"}} onClick={()=>onSlice&&onSlice(s.key)} />)}
-      <circle cx={CX} cy={CY} r="38" fill={C.panel} style={{pointerEvents:"none"}} />
+      {slices.map((s,i) => (
+        <path key={i} d={s.path} fill="none" stroke={s.color} strokeWidth={hoverKey===s.key?STROKE+6:STROKE} strokeLinecap="round"
+          style={{cursor:onSlice?"pointer":"default", opacity:hoverKey&&hoverKey!==s.key?0.35:1, transition:"stroke-width .15s ease, opacity .15s ease"}}
+          onClick={()=>onSlice&&onSlice(s.key)} onMouseEnter={()=>setHoverKey(s.key)} onMouseLeave={()=>setHoverKey(null)} />
+      ))}
+      <text x={CX} y={CY-3} textAnchor="middle" className="disp" style={{fontSize:19,fontWeight:700,fill:C.text}}>{fmt(hovered?hovered.value:total)}</text>
+      <text x={CX} y={CY+15} textAnchor="middle" style={{fontSize:10,fill:C.faint}}>{hovered ? hovered.name : "Total"}</text>
     </svg>
-    <div style={{display:"flex",flexWrap:"wrap",gap:"4px 14px",marginTop:10,justifyContent:"center"}}>
-      {data.map((d) => <div key={d.name} onClick={()=>onSlice&&onSlice(d.key)} style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:C.muted,cursor:onSlice?"pointer":"default"}}>
-        <span style={{width:8,height:8,borderRadius:2,background:d.color}} />{d.name}
-      </div>)}
+    <div style={{display:"flex",flexWrap:"wrap",gap:"4px 8px",marginTop:6,justifyContent:"center"}}>
+      {slices.map((s) => (
+        <div key={s.name} onClick={()=>onSlice&&onSlice(s.key)} onMouseEnter={()=>setHoverKey(s.key)} onMouseLeave={()=>setHoverKey(null)}
+          style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:C.muted,cursor:onSlice?"pointer":"default",padding:"3px 8px",borderRadius:999,background:hoverKey===s.key?`${s.color}18`:"transparent"}}>
+          <span style={{width:8,height:8,borderRadius:999,background:s.color,flexShrink:0}} />{s.name}<span className="mono" style={{color:C.faint}}>{s.pct}%</span>
+        </div>
+      ))}
     </div>
   </div>;
 }
 function SimpleBars({data}) {
   const max = Math.max(...data.map(d=>d.production+d.indirect), 1);
-  return <div style={{display:"flex",alignItems:"flex-end",gap:14,height:160,padding:"10px 4px"}}>
-    {data.map((d) => (
-      <div key={d.label} style={{display:"flex",flexDirection:"column",alignItems:"center",flex:1,height:"100%",justifyContent:"flex-end"}}>
-        <div style={{width:"70%",display:"flex",flexDirection:"column-reverse",height:`${((d.production+d.indirect)/max)*120}px`}}>
-          <div style={{background:"#0067C0",height:`${max?(d.production/(d.production+d.indirect||1))*100:0}%`,borderRadius:"0 0 4px 4px"}} />
-          <div style={{background:C.accent,height:`${max?(d.indirect/(d.production+d.indirect||1))*100:0}%`,borderRadius:"4px 4px 0 0"}} />
-        </div>
-        <div className="mono" style={{fontSize:10,color:C.faint,marginTop:6}}>{d.label}</div>
-      </div>
-    ))}
+  const TRACK = 140;
+  return <div>
+    <div style={{display:"flex",alignItems:"flex-end",gap:14,padding:"10px 4px 0"}}>
+      {data.map((d) => {
+        const totalH = d.production + d.indirect;
+        const barH = Math.round((totalH/max)*TRACK);
+        return (
+          <div key={d.label} style={{display:"flex",flexDirection:"column",alignItems:"center",flex:1}}>
+            <div className="mono" style={{fontSize:10,color:C.faint,marginBottom:4,opacity:totalH?1:0}}>{totalH.toFixed(1)}h</div>
+            <div style={{width:"100%",maxWidth:34,height:TRACK,display:"flex",alignItems:"flex-end",background:C.panel2,borderRadius:10,overflow:"hidden"}}>
+              <div title={`Production ${d.production}h · Charge indirecte ${d.indirect}h`}
+                style={{width:"100%",display:"flex",flexDirection:"column-reverse",height:`${barH}px`,borderRadius:10,overflow:"hidden",transition:"height .4s ease"}}>
+                <div style={{background:"linear-gradient(180deg,#0067C0,#3D9BE9)",height:`${totalH?(d.production/totalH)*100:0}%`}} />
+                <div style={{background:`linear-gradient(0deg,${C.accent},#FFCB6B)`,height:`${totalH?(d.indirect/totalH)*100:0}%`}} />
+              </div>
+            </div>
+            <div className="mono" style={{fontSize:10,color:C.faint,marginTop:6}}>{d.label}</div>
+          </div>
+        );
+      })}
+    </div>
+    <div style={{display:"flex",gap:16,justifyContent:"center",marginTop:12}}>
+      <span style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:C.muted}}><span style={{width:8,height:8,borderRadius:999,background:"#0067C0"}} />Production</span>
+      <span style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:C.muted}}><span style={{width:8,height:8,borderRadius:999,background:C.accent}} />Charge indirecte</span>
+    </div>
   </div>;
 }
 function EntryRow({e,onDelete,onToggle,showDate,editing,onEditStart,onEditCancel,onEditSave}) {
@@ -1419,35 +1423,35 @@ function EntryRow({e,onDelete,onToggle,showDate,editing,onEditStart,onEditCancel
 
   if (editing && draft) {
     const draftCat = catByKey(draft.cat);
-    return <div style={{padding:10,background:C.panel2,borderRadius:3,border:`1px solid ${draftCat.color}`}}>
+    return <div style={{padding:10,background:C.panel2,borderRadius:12,border:`1px solid ${draftCat.color}`}}>
       <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:8}}>
-        {CATS.map((c) => <button key={c.key} onClick={()=>setDraft(d=>({...d,cat:c.key,sub:c.subs[0]}))} style={{padding:"5px 10px",borderRadius:3,fontSize:12,
+        {CATS.map((c) => <button key={c.key} onClick={()=>setDraft(d=>({...d,cat:c.key,sub:c.subs[0]}))} style={{padding:"5px 10px",borderRadius:999,fontSize:12,
           border:`1px solid ${draft.cat===c.key?c.color:C.border2}`, background:draft.cat===c.key?`${c.color}22`:"transparent", color:draft.cat===c.key?c.color:C.muted}}>{c.label}</button>)}
       </div>
       <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:8}}>
-        {draftCat.subs.map((s) => <button key={s} onClick={()=>setDraft(d=>({...d,sub:s}))} style={{padding:"5px 10px",borderRadius:3,fontSize:12,
+        {draftCat.subs.map((s) => <button key={s} onClick={()=>setDraft(d=>({...d,sub:s}))} style={{padding:"5px 10px",borderRadius:999,fontSize:12,
           border:`1px solid ${draft.sub===s?draftCat.color:C.border2}`, background:draft.sub===s?`${draftCat.color}18`:"transparent", color:draft.sub===s?draftCat.color:C.muted}}>{s}</button>)}
       </div>
       <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:8}}>
         <span style={{fontSize:12,color:C.faint}}>Date</span>
         <input type="date" value={draft.date} onChange={(ev)=>setDraft(d=>({...d,date:ev.target.value}))} className="mono"
-          style={{background:C.panel,border:`1px solid ${C.border2}`,borderRadius:3,padding:"6px 8px",color:C.text}} />
+          style={{background:C.panel,border:`1px solid ${C.border2}`,borderRadius:12,padding:"6px 8px",color:C.text}} />
         <span style={{fontSize:12,color:C.faint}}>Durée (min)</span>
         <input type="number" value={draft.minutes} onChange={(ev)=>setDraft(d=>({...d,minutes:Number(ev.target.value)||0}))} className="mono"
-          style={{width:64,background:C.panel,border:`1px solid ${C.border2}`,borderRadius:3,padding:"6px 8px",color:C.text}} />
+          style={{width:64,background:C.panel,border:`1px solid ${C.border2}`,borderRadius:12,padding:"6px 8px",color:C.text}} />
         <input placeholder="Sujet / projet" value={draft.subject} onChange={(ev)=>setDraft(d=>({...d,subject:ev.target.value}))}
-          style={{flex:"1 1 140px",background:C.panel,border:`1px solid ${C.border2}`,borderRadius:3,padding:"6px 8px",fontSize:12,color:C.text}} />
+          style={{flex:"1 1 140px",background:C.panel,border:`1px solid ${C.border2}`,borderRadius:12,padding:"6px 8px",fontSize:12,color:C.text}} />
         <input placeholder="Note" value={draft.comment} onChange={(ev)=>setDraft(d=>({...d,comment:ev.target.value}))}
-          style={{flex:"1 1 140px",background:C.panel,border:`1px solid ${C.border2}`,borderRadius:3,padding:"6px 8px",fontSize:12,color:C.text}} />
+          style={{flex:"1 1 140px",background:C.panel,border:`1px solid ${C.border2}`,borderRadius:12,padding:"6px 8px",fontSize:12,color:C.text}} />
       </div>
       <div style={{display:"flex",gap:8}}>
-        <button onClick={()=>onEditSave(draft)} style={{fontSize:12,color:C.abysse,background:`${C.abysse}15`,border:`1px solid ${C.abysse}55`,borderRadius:3,padding:"6px 12px",cursor:"pointer"}}>Enregistrer</button>
-        <button onClick={onEditCancel} style={{fontSize:12,color:C.muted,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:3,padding:"6px 12px",cursor:"pointer"}}>Annuler</button>
+        <button onClick={()=>onEditSave(draft)} style={{fontSize:12,color:C.abysse,background:`${C.abysse}15`,border:`1px solid ${C.abysse}55`,borderRadius:12,padding:"6px 12px",cursor:"pointer"}}>Enregistrer</button>
+        <button onClick={onEditCancel} style={{fontSize:12,color:C.muted,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:12,padding:"6px 12px",cursor:"pointer"}}>Annuler</button>
       </div>
     </div>;
   }
 
-  return <div style={{display:"flex",alignItems:"center",gap:12,padding:"8px 10px",background:C.panel2,borderRadius:3,border:`1px solid ${C.border}`}}>
+  return <div style={{display:"flex",alignItems:"center",gap:12,padding:"8px 10px",background:C.panel2,borderRadius:12,border:`1px solid ${C.border}`}}>
     <span style={{width:8,height:8,borderRadius:999,background:cat.color,flexShrink:0}} />
     <div style={{flex:1,minWidth:0}}>
       <div style={{fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
@@ -1456,7 +1460,7 @@ function EntryRow({e,onDelete,onToggle,showDate,editing,onEditStart,onEditCancel
       </div>
       {e.comment && <div style={{fontSize:11,color:C.faint,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.comment}</div>}
     </div>
-    <button onClick={onToggle} style={{fontSize:10,padding:"3px 8px",borderRadius:2,border:`1px solid ${e.status==="Terminé"?"#57CBBB":C.border2}`,
+    <button onClick={onToggle} style={{fontSize:10,padding:"3px 8px",borderRadius:999,border:`1px solid ${e.status==="Terminé"?"#57CBBB":C.border2}`,
       color:e.status==="Terminé"?C.abysse:C.muted, background:e.status==="Terminé"?"#57CBBB22":"transparent",whiteSpace:"nowrap",cursor:"pointer"}}>{e.status}</button>
     <span className="mono" style={{fontSize:13,color:C.text,minWidth:48,textAlign:"right"}}>{fmt(e.minutes)}</span>
     <button onClick={onEditStart} style={{background:"none",border:"none",cursor:"pointer",padding:4}} title="Modifier">✏️</button>
@@ -1475,7 +1479,7 @@ function DayGauge({todayTotal,gaugeMax,todayEntries,dayTheoretical,absence,absen
         <span className="disp mono" style={{fontSize:15,fontWeight:700}}>{fmt(todayTotal)} <span style={{color:C.faint,fontWeight:400}}>/ {fmt(dayTheoretical)} théorique</span></span>
       )}
     </div>
-    <div style={{display:"flex",height:14,borderRadius:3,overflow:"hidden",background:C.panel2,border:`1px solid ${C.border}`}}>
+    <div style={{display:"flex",height:14,borderRadius:12,overflow:"hidden",background:C.panel2,border:`1px solid ${C.border}`}}>
       {CATS.map((c) => { const m=byCat[c.key]||0; if(!m) return null; return <div key={c.key} style={{width:`${(m/gaugeMax)*100}%`,background:c.color}} title={`${c.label}: ${fmt(m)}`} />; })}
     </div>
   </div>;
@@ -1487,9 +1491,9 @@ function TaskRow({t,editing,onCycleStatus,onTogglePriority,onSetCategory,onDelet
   const isDone = t.status === "fait";
 
   return (
-    <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:C.panel,borderRadius:3,border:`1px solid ${C.border}`}}>
+    <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:C.panel,borderRadius:12,border:`1px solid ${C.border}`}}>
       <button onClick={onCycleStatus} title="Changer le statut" style={{
-        width:20,height:20,borderRadius:3,border:`2px solid ${s.color}`,background:isDone?s.color:"transparent",
+        width:20,height:20,borderRadius:12,border:`2px solid ${s.color}`,background:isDone?s.color:"transparent",
         display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",padding:0}}>
         {isDone && <span style={{color:"#16302E",fontSize:12,lineHeight:1,fontWeight:700}}>✓</span>}
       </button>
@@ -1503,14 +1507,14 @@ function TaskRow({t,editing,onCycleStatus,onTogglePriority,onSetCategory,onDelet
           <input autoFocus value={draft} onChange={(e)=>setDraft(e.target.value)}
             onKeyDown={(e)=>{if(e.key==="Enter") onEditSave(draft); if(e.key==="Escape") onEditCancel();}}
             onBlur={()=>onEditSave(draft)}
-            style={{width:"100%",background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:3,padding:"4px 6px",fontSize:14,color:C.text}} />
+            style={{width:"100%",background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:12,padding:"4px 6px",fontSize:14,color:C.text}} />
         ) : (
           <span onClick={onEditStart} style={{fontSize:14,cursor:"text",textDecoration:isDone?"line-through":"none",color:isDone?C.faint:C.text}}>{t.text}</span>
         )}
       </div>
 
       <select value={t.category||""} onChange={(e)=>onSetCategory(e.target.value)} style={{
-        fontSize:11,padding:"4px 6px",borderRadius:3,border:`1px solid ${cat?cat.color+"55":C.border2}`,
+        fontSize:11,padding:"4px 6px",borderRadius:12,border:`1px solid ${cat?cat.color+"55":C.border2}`,
         background:cat?`${cat.color}12`:C.panel2, color:cat?cat.color:C.faint, cursor:"pointer",maxWidth:130}}>
         <option value="">— catégorie —</option>
         {CATS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
@@ -1560,7 +1564,7 @@ function TimeClock({log,onChange,todayTotal,onLogEcart}) {
 
   const ecart = l.start_ts ? worked - todayTotal : null;
 
-  return <div style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:4,padding:14,marginBottom:18}}>
+  return <div style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:18,padding:14,marginBottom:18}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginBottom:10}}>
       <span style={{fontSize:12,fontWeight:600,color:C.muted,letterSpacing:0.3,textTransform:"uppercase"}}>🕒 Pointeuse</span>
       <span className="mono" style={{fontSize:12,color:activePause?C.accent:C.muted}}>{status}</span>
@@ -1569,17 +1573,17 @@ function TimeClock({log,onChange,todayTotal,onLogEcart}) {
     <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10}}>
       {/* Début journée */}
       {l.start_ts ? (
-        <div style={{display:"flex",alignItems:"center",gap:6,border:"1px solid #57CBBB55",background:"#57CBBB18",borderRadius:3,padding:"6px 8px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,border:"1px solid #57CBBB55",background:"#57CBBB18",borderRadius:999,padding:"6px 8px"}}>
           <span style={{fontSize:11,color:C.faint}}>Début journée</span>
           <input type="time" value={toTimeInput(l.start_ts)} onChange={(e)=>editField("start_ts",e.target.value)} className="mono" style={{background:"transparent",border:"none",color:C.abysse,fontSize:13,width:62}} />
           <button onClick={()=>clearField("start_ts")} style={{background:"none",border:"none",cursor:"pointer",color:C.faint}}>✕</button>
         </div>
       ) : manualField==="start_ts" ? (
-        <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${C.abysse}`,background:C.panel2,borderRadius:3,padding:"6px 8px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${C.abysse}`,background:C.panel2,borderRadius:999,padding:"6px 8px"}}>
           <input type="time" autoFocus onChange={(e)=>{editField("start_ts",e.target.value);setManualField(null);}} onBlur={()=>setManualField(null)} className="mono" style={{background:"transparent",border:"none",color:C.abysse,fontSize:13,width:90}} />
         </div>
       ) : (
-        <div style={{display:"flex",borderRadius:3,overflow:"hidden",border:`1px solid ${C.abysse}`}}>
+        <div style={{display:"flex",borderRadius:999,overflow:"hidden",border:`1px solid ${C.abysse}`}}>
           <button onClick={setStart} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 10px",fontSize:13,border:"none",background:C.abysse,color:"#fff",cursor:"pointer"}}>Début journée</button>
           <button onClick={()=>setManualField("start_ts")} title="Saisir une heure manuellement" style={{padding:"8px 9px",border:"none",borderLeft:"1px solid #ffffff55",background:C.abysse,color:"#fff",cursor:"pointer"}}>🕘</button>
         </div>
@@ -1587,7 +1591,7 @@ function TimeClock({log,onChange,todayTotal,onLogEcart}) {
 
       {/* Pause / Reprendre — bascule, réutilisable toute la journée */}
       {l.start_ts && !l.end_ts && (
-        <button onClick={togglePause} style={{padding:"8px 14px",borderRadius:3,fontSize:13,fontWeight:600,border:"none",cursor:"pointer",
+        <button onClick={togglePause} style={{padding:"8px 14px",borderRadius:999,fontSize:13,fontWeight:600,border:"none",cursor:"pointer",
           background: activePause ? C.accent : "#57CBBB22", color: activePause ? "#fff" : C.abysse}}>
           {activePause ? "▶ Reprendre" : "⏸ Pause"}
         </button>
@@ -1595,17 +1599,17 @@ function TimeClock({log,onChange,todayTotal,onLogEcart}) {
 
       {/* Fin de journée */}
       {l.start_ts && (l.end_ts ? (
-        <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${C.abysse}55`,background:`${C.abysse}12`,borderRadius:3,padding:"6px 8px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${C.abysse}55`,background:`${C.abysse}12`,borderRadius:999,padding:"6px 8px"}}>
           <span style={{fontSize:11,color:C.faint}}>Fin de journée</span>
           <input type="time" value={toTimeInput(l.end_ts)} onChange={(e)=>editField("end_ts",e.target.value)} className="mono" style={{background:"transparent",border:"none",color:C.abysse,fontSize:13,width:62}} />
           <button onClick={()=>clearField("end_ts")} style={{background:"none",border:"none",cursor:"pointer",color:C.faint}}>✕</button>
         </div>
       ) : manualField==="end_ts" ? (
-        <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${C.abysse}`,background:C.panel2,borderRadius:3,padding:"6px 8px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${C.abysse}`,background:C.panel2,borderRadius:999,padding:"6px 8px"}}>
           <input type="time" autoFocus onChange={(e)=>{editField("end_ts",e.target.value);setManualField(null);}} onBlur={()=>setManualField(null)} className="mono" style={{background:"transparent",border:"none",color:C.abysse,fontSize:13,width:90}} />
         </div>
       ) : (
-        <div style={{display:"flex",borderRadius:3,overflow:"hidden",border:`1px solid ${C.abysse}`}}>
+        <div style={{display:"flex",borderRadius:999,overflow:"hidden",border:`1px solid ${C.abysse}`}}>
           <button onClick={setEnd} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 10px",fontSize:13,border:"none",background:`${C.abysse}18`,color:C.abysse,cursor:"pointer"}}>Fin de journée</button>
           <button onClick={()=>setManualField("end_ts")} title="Saisir une heure manuellement" style={{padding:"8px 9px",border:"none",borderLeft:`1px solid ${C.abysse}55`,background:"transparent",color:C.abysse,cursor:"pointer"}}>🕘</button>
         </div>
@@ -1616,7 +1620,7 @@ function TimeClock({log,onChange,todayTotal,onLogEcart}) {
     {pauses.length > 0 && (
       <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
         {pauses.map((p,idx) => (
-          <div key={idx} style={{display:"flex",alignItems:"center",gap:4,border:"1px solid #57CBBB55",background:"#57CBBB15",borderRadius:3,padding:"4px 6px",fontSize:11}}>
+          <div key={idx} style={{display:"flex",alignItems:"center",gap:4,border:"1px solid #57CBBB55",background:"#57CBBB15",borderRadius:999,padding:"4px 6px",fontSize:11}}>
             <input type="time" value={toTimeInput(p.start)} onChange={(e)=>editPause(idx,"start",e.target.value)} className="mono" style={{background:"transparent",border:"none",color:C.abysse,fontSize:11,width:52}} />
             <span style={{color:C.faint}}>→</span>
             {p.end ? (
@@ -1634,7 +1638,7 @@ function TimeClock({log,onChange,todayTotal,onLogEcart}) {
       <span style={{color:C.muted}}>Catégorisé : <span className="mono" style={{color:C.text}}>{fmt(todayTotal)}</span></span>
       {ecart !== null && <span style={{color:ecart>5?C.accent:C.faint}}>Écart non catégorisé : <span className="mono" style={{fontWeight:600}}>{ecart>=0?fmt(ecart):`−${fmt(-ecart)}`}</span></span>}
       {ecart !== null && ecart > 0 && !ecartOpen && (
-        <button onClick={()=>{setEcartMin(Math.round(ecart));setEcartOpen(true);}} style={{padding:"5px 10px",borderRadius:3,fontSize:11,fontWeight:600,border:`1px solid ${C.accent}`,background:`${C.accent}15`,color:C.accent,cursor:"pointer"}}>
+        <button onClick={()=>{setEcartMin(Math.round(ecart));setEcartOpen(true);}} style={{padding:"5px 10px",borderRadius:999,fontSize:11,fontWeight:600,border:`1px solid ${C.accent}`,background:`${C.accent}15`,color:C.accent,cursor:"pointer"}}>
           📌 Affecter l'écart
         </button>
       )}
@@ -1643,16 +1647,16 @@ function TimeClock({log,onChange,todayTotal,onLogEcart}) {
     {ecartOpen && (
       <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.border}`,display:"flex",flexWrap:"wrap",alignItems:"center",gap:8}}>
         <span style={{fontSize:11,color:C.muted}}>Affecter</span>
-        <input type="number" min="1" value={ecartMin} onChange={(e)=>setEcartMin(Math.max(0,parseInt(e.target.value)||0))} className="mono" style={{width:56,padding:"5px 6px",borderRadius:3,border:`1px solid ${C.border2}`,fontSize:12}} />
+        <input type="number" min="1" value={ecartMin} onChange={(e)=>setEcartMin(Math.max(0,parseInt(e.target.value)||0))} className="mono" style={{width:56,padding:"5px 6px",borderRadius:12,border:`1px solid ${C.border2}`,fontSize:12}} />
         <span style={{fontSize:11,color:C.muted}}>min à</span>
-        <select value={ecartCat} onChange={(e)=>{const c=e.target.value;setEcartCat(c);setEcartSub(catByKey(c).subs[0]);}} style={{padding:"5px 6px",borderRadius:3,border:`1px solid ${C.border2}`,fontSize:12}}>
+        <select value={ecartCat} onChange={(e)=>{const c=e.target.value;setEcartCat(c);setEcartSub(catByKey(c).subs[0]);}} style={{padding:"5px 6px",borderRadius:12,border:`1px solid ${C.border2}`,fontSize:12}}>
           {CATS.map((c)=><option key={c.key} value={c.key}>{c.label}</option>)}
         </select>
-        <select value={ecartSub} onChange={(e)=>setEcartSub(e.target.value)} style={{padding:"5px 6px",borderRadius:3,border:`1px solid ${C.border2}`,fontSize:12}}>
+        <select value={ecartSub} onChange={(e)=>setEcartSub(e.target.value)} style={{padding:"5px 6px",borderRadius:12,border:`1px solid ${C.border2}`,fontSize:12}}>
           {catByKey(ecartCat).subs.map((s)=><option key={s} value={s}>{s}</option>)}
         </select>
-        <button onClick={()=>{if(ecartMin>0){onLogEcart(ecartCat,ecartSub,ecartMin);}setEcartOpen(false);}} style={{padding:"5px 12px",borderRadius:3,fontSize:11,fontWeight:600,border:"none",background:C.abysse,color:"#fff",cursor:"pointer"}}>Valider</button>
-        <button onClick={()=>setEcartOpen(false)} style={{padding:"5px 12px",borderRadius:3,fontSize:11,border:`1px solid ${C.border2}`,background:"transparent",color:C.muted,cursor:"pointer"}}>Annuler</button>
+        <button onClick={()=>{if(ecartMin>0){onLogEcart(ecartCat,ecartSub,ecartMin);}setEcartOpen(false);}} style={{padding:"5px 12px",borderRadius:999,fontSize:11,fontWeight:600,border:"none",background:C.abysse,color:"#fff",cursor:"pointer"}}>Valider</button>
+        <button onClick={()=>setEcartOpen(false)} style={{padding:"5px 12px",borderRadius:999,fontSize:11,border:`1px solid ${C.border2}`,background:"transparent",color:C.muted,cursor:"pointer"}}>Annuler</button>
       </div>
     )}
   </div>;
