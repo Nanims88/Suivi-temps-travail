@@ -14,13 +14,6 @@
 <meta name="apple-mobile-web-app-title" content="Suivi temps" />
 <meta name="mobile-web-app-capable" content="yes" />
 <script>
-  function cdnFail(name) {
-    var el = document.getElementById("error-banner");
-    el.style.display = "block";
-    el.textContent = "ERREUR : la librairie externe \"" + name + "\" n'a pas pu se charger (probablement bloquée par le réseau/pare-feu). Essaie depuis un autre réseau (4G du téléphone par exemple) pour confirmer.";
-  }
-</script>
-<script>
 /**
  * @license React
  * react.production.min.js
@@ -493,6 +486,34 @@ const endOfYear = (date) => new Date(date.getFullYear(), 11, 31);
 const getWeeksInYear = (date) => { const s = startOfYear(date), e = endOfYear(date); return (Math.round((e-s)/86400000)+1)/7; };
 const MONTH_LABELS = ["Jan","Fév","Mar","Avr","Mai","Juin","Juil","Août","Sep","Oct","Nov","Déc"];
 
+// Bornes [début, fin] de la période contenant `date`, selon la granularité choisie.
+const rangeFor = (period, date) => {
+  if (period === "jour") return [date, date];
+  if (period === "semaine") return [startOfWeek(date), endOfWeek(date)];
+  if (period === "annee") return [startOfYear(date), endOfYear(date)];
+  return [startOfMonth(date), endOfMonth(date)];
+};
+// Décale `date` de `dir` période(s) (±1) selon la granularité choisie.
+const shiftDate = (date, period, dir) => {
+  const d = new Date(date);
+  if (period === "jour") d.setDate(d.getDate() + dir);
+  else if (period === "semaine") d.setDate(d.getDate() + dir*7);
+  else if (period === "annee") d.setFullYear(d.getFullYear() + dir);
+  else d.setMonth(d.getMonth() + dir);
+  return d;
+};
+// Agrège une liste d'entrées par catégorie et par grand groupe (production/indirect/projet).
+const aggregate = (list) => {
+  const byCat = {}; CATS.forEach((c) => byCat[c.key] = 0);
+  let production=0, indirect=0, projet=0, total=0;
+  list.forEach((e) => {
+    byCat[e.cat] = (byCat[e.cat]||0) + e.minutes; total += e.minutes;
+    const g = catByKey(e.cat).group;
+    if (g==="production") production += e.minutes; else if (g==="projet") projet += e.minutes; else indirect += e.minutes;
+  });
+  return { byCat, production, indirect, projet, total };
+};
+
 /* ======================= APP ======================= */
 function App() {
   const [loaded, setLoaded] = useState(false);
@@ -668,10 +689,7 @@ function App() {
     const escape = (v) => `"${String(v ?? "").replace(/"/g,'""')}"`;
     const rows = tasks.map((t) => [t.text, statusByKey(t.status).label, t.priority, t.category ? catByKey(t.category)?.label || t.category : "", new Date(t.created_at).toLocaleDateString("fr-FR")].map(escape).join(";"));
     const csv = "\uFEFF" + [headers.join(";"), ...rows].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = `taches-${new Date().toISOString().slice(0,10)}.csv`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    downloadFile(csv, `taches-${new Date().toISOString().slice(0,10)}.csv`, "text/csv;charset=utf-8");
   };
 
   const deleteEntry = async (id) => {
@@ -799,12 +817,7 @@ function App() {
   const todayLog = dayLogs[todayIso];
 
   /* -------- period range & aggregates -------- */
-  const range = useMemo(() => {
-    if (period === "jour") return [refDate, refDate];
-    if (period === "semaine") return [startOfWeek(refDate), endOfWeek(refDate)];
-    if (period === "annee") return [startOfYear(refDate), endOfYear(refDate)];
-    return [startOfMonth(refDate), endOfMonth(refDate)];
-  }, [period, refDate]);
+  const range = useMemo(() => rangeFor(period, refDate), [period, refDate]);
 
   const periodEntries = useMemo(() => {
     const [s, e] = range; const sIso = toISO(s), eIso = toISO(e);
@@ -821,14 +834,7 @@ function App() {
     }).sort((a,b)=>b.date.localeCompare(a.date)||b.created_at-a.created_at);
   }, [entries, historySearch]);
 
-  const navigate = (dir) => {
-    const d = new Date(refDate);
-    if (period === "jour") d.setDate(d.getDate() + dir);
-    else if (period === "semaine") d.setDate(d.getDate() + dir*7);
-    else if (period === "annee") d.setFullYear(d.getFullYear() + dir);
-    else d.setMonth(d.getMonth() + dir);
-    setRefDate(d);
-  };
+  const navigate = (dir) => setRefDate(shiftDate(refDate, period, dir));
 
   const periodLabel = () => {
     const [s, e] = range;
@@ -838,43 +844,14 @@ function App() {
     return refDate.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
   };
 
-  const agg = useMemo(() => {
-    const byCat = {}; CATS.forEach((c) => byCat[c.key] = 0);
-    let production=0, indirect=0, projet=0, total=0;
-    periodEntries.forEach((e) => {
-      byCat[e.cat] = (byCat[e.cat]||0) + e.minutes; total += e.minutes;
-      const g = catByKey(e.cat).group;
-      if (g==="production") production += e.minutes; else if (g==="projet") projet += e.minutes; else indirect += e.minutes;
-    });
-    return { byCat, production, indirect, projet, total };
-  }, [periodEntries]);
+  const agg = useMemo(() => aggregate(periodEntries), [periodEntries]);
 
   /* -------- période précédente, pour les indicateurs d'évolution -------- */
-  const prevRefDate = useMemo(() => {
-    const d = new Date(refDate);
-    if (period === "jour") d.setDate(d.getDate() - 1);
-    else if (period === "semaine") d.setDate(d.getDate() - 7);
-    else if (period === "annee") d.setFullYear(d.getFullYear() - 1);
-    else d.setMonth(d.getMonth() - 1);
-    return d;
-  }, [period, refDate]);
-  const prevRange = useMemo(() => {
-    if (period === "jour") return [prevRefDate, prevRefDate];
-    if (period === "semaine") return [startOfWeek(prevRefDate), endOfWeek(prevRefDate)];
-    if (period === "annee") return [startOfYear(prevRefDate), endOfYear(prevRefDate)];
-    return [startOfMonth(prevRefDate), endOfMonth(prevRefDate)];
-  }, [period, prevRefDate]);
+  const prevRefDate = useMemo(() => shiftDate(refDate, period, -1), [period, refDate]);
+  const prevRange = useMemo(() => rangeFor(period, prevRefDate), [period, prevRefDate]);
   const prevAgg = useMemo(() => {
     const [s,e] = prevRange; const sIso = toISO(s), eIso = toISO(e);
-    const prevEntries = entries.filter((en) => en.date >= sIso && en.date <= eIso);
-    const byCat = {}; CATS.forEach((c) => byCat[c.key] = 0);
-    let production=0, indirect=0, projet=0, total=0;
-    prevEntries.forEach((e) => {
-      byCat[e.cat] = (byCat[e.cat]||0) + e.minutes; total += e.minutes;
-      const g = catByKey(e.cat).group;
-      if (g==="production") production += e.minutes; else if (g==="projet") projet += e.minutes; else indirect += e.minutes;
-    });
-    return { byCat, production, indirect, projet, total };
+    return aggregate(entries.filter((en) => en.date >= sIso && en.date <= eIso));
   }, [entries, prevRange]);
   const prevLabel = period==="jour" ? "jour précédent" : period==="semaine" ? "semaine précédente" : period==="annee" ? "année précédente" : "mois précédent";
 

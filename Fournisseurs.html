@@ -421,7 +421,7 @@ function toast(msg){
 /* =====================================================================
    4. État
    ===================================================================== */
-let D = { fournisseurs:[], tarifs:[], conditions:[], journal:[] };
+let D = { fournisseurs:[], tarifs:[], conditions:[], journal:[], tarifsParFournisseur:{} };
 let vueCourante = 'alertes';
 let ficheOuverte = null;
 
@@ -450,7 +450,11 @@ async function charger(){
     tout('conditions', 'date_debut'),
     tout('journal', 'date', false),
   ]);
-  D = { fournisseurs:f, tarifs:t, conditions:c, journal:j };
+  // Regroupement précalculé, réutilisé par versions()/idsRemplaces() pour
+  // éviter de reparcourir tous les tarifs à chaque fournisseur.
+  const tarifsParFournisseur = {};
+  t.forEach(x => (tarifsParFournisseur[x.fournisseur_id] ??= []).push(x));
+  D = { fournisseurs:f, tarifs:t, conditions:c, journal:j, tarifsParFournisseur };
 }
 
 /* =====================================================================
@@ -460,7 +464,7 @@ async function charger(){
 // Versions tarifaires d'un fournisseur, triées, avec fin déduite et statut.
 function versions(fid){
   // À date d'application égale, la saisie la plus récente fait foi : c'est une correction.
-  const v = D.tarifs.filter(t => t.fournisseur_id === fid)
+  const v = (D.tarifsParFournisseur[fid] || []).slice()
     .sort((a,b) => a.date_application.localeCompare(b.date_application)
                 || (a.created_at || '').localeCompare(b.created_at || ''));
   // Une confirmation "sans changement" est un jalon administratif, pas une
@@ -491,13 +495,8 @@ function versions(fid){
 
 // Versions annulées par une correction portant la même date d'application.
 function idsRemplaces(){
-  const parFournisseur = {};
-  D.tarifs.forEach(t => {
-    if(!parFournisseur[t.fournisseur_id]) parFournisseur[t.fournisseur_id] = [];
-    parFournisseur[t.fournisseur_id].push(t);
-  });
   const ids = new Set();
-  for(const lot of Object.values(parFournisseur)){
+  for(const lot of Object.values(D.tarifsParFournisseur)){
     const retenu = {};
     for(const t of lot){
       const k = t.date_application;
@@ -572,22 +571,32 @@ const DELAI_RELANCE = 15; // jours avant qu'une relance sans réponse ne remonte
 
 // Le circuit comporte deux étapes successives : saisie dans SAP, puis diffusion.
 const HORS_CIRCUIT = ['NE PAS SAISIR','PAS DE MODIF','NON TRAITE'];
-function enCircuit(condition){
+// aPreparer/chezUnTiers/aSaisir/aDiffuser sont toujours appelées ensemble
+// (vueAlertes) : la base commune (noms, corrections, filtre de fenêtre) est
+// mise en cache le temps d'un rechargement de D, pour n'être calculée qu'une
+// fois plutôt que quatre.
+let _baseCircuit = null;
+function baseCircuit(){
+  if(_baseCircuit && _baseCircuit.D === D) return _baseCircuit.liste;
   const limite = new Date(AUJ().getTime() + 15*86400000);
   const noms = Object.fromEntries(D.fournisseurs.map(f => [f.id, f]));
   const remplaces = idsRemplaces();
-  return D.tarifs
+  const liste = D.tarifs
     .filter(t => {
       const d0 = jour(t.date_application);
       if(!d0 || d0 > limite) return false;
       if(remplaces.has(t.id)) return false;
       if(t.diffusion) return false;
       if(HORS_CIRCUIT.includes(t.etat)) return false;
-      return condition(t);
+      return true;
     })
     .map(t => ({...t, debut:jour(t.date_application), frs:noms[t.fournisseur_id]}))
-    .filter(t => t.frs)
-    .sort((a,b) => a.debut - b.debut);
+    .filter(t => t.frs);
+  _baseCircuit = { D, liste };
+  return liste;
+}
+function enCircuit(condition){
+  return baseCircuit().filter(condition).sort((a,b) => a.debut - b.debut);
 }
 // Attentes qui ne dépendent pas de vous : rien à faire tant qu'elles courent.
 const ETAT_TIERS = ['EN ATT MARION', 'ATT FRS TARIFS', 'ATT BAN'];
@@ -1532,12 +1541,13 @@ function indicateurs(a, b){
   const saisis   = D.tarifs.filter(t => dansPeriode(t.maj_sap, a, b));
   const diffuses = D.tarifs.filter(t => dansPeriode(t.date_diffusion, a, b));
   const parRapport = listeEcarts(saisis, 'maj_sap', 'date_application');
+  const parTraitement = listeEcarts(saisis, 'maj_sap', 'date_reception');
   const cycles = diffuses.map(t => cyclesManques(t.maj_sap, t.date_diffusion))
     .filter(v => v !== null);
   return {
     recus, saisis, diffuses, parRapport, cycles,
     nRecus:recus.length, nSaisis:saisis.length, nDiffuses:diffuses.length,
-    traitement: mediane(listeEcarts(saisis, 'maj_sap', 'date_reception')),
+    traitement: mediane(parTraitement),
     arbitrage: mediane(listeEcarts(D.tarifs.filter(t => dansPeriode(t.retour_resp, a, b)),
                                    'retour_resp', 'envoi_resp')),
     brutDiffusion: mediane(listeEcarts(diffuses, 'date_diffusion', 'maj_sap')),
@@ -1546,7 +1556,7 @@ function indicateurs(a, b){
       ? Math.round(100 * parRapport.filter(v => v > 0).length / parRapport.length) : null,
     partLundi: cycles.length
       ? Math.round(100 * cycles.filter(v => v === 0).length / cycles.length) : null,
-    nTraitement: listeEcarts(saisis, 'maj_sap', 'date_reception').length,
+    nTraitement: parTraitement.length,
   };
 }
 
