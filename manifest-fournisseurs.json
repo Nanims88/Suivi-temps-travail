@@ -1,0 +1,17 @@
+{
+  "name": "Suivi fournisseurs SICAAP",
+  "short_name": "Fournisseurs",
+  "description": "Suivi des versions tarifaires, du circuit de traitement interne, des conditions commerciales et de l'historique des échanges fournisseurs.",
+  "start_url": "./Fournisseurs.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#F3F5F4",
+  "theme_color": "#015959",
+  "lang": "fr",
+  "icons": [
+    { "src": "icons-fournisseurs/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons-fournisseurs/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons-fournisseurs/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
