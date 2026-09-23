@@ -463,9 +463,15 @@ function versions(fid){
   const v = D.tarifs.filter(t => t.fournisseur_id === fid)
     .sort((a,b) => a.date_application.localeCompare(b.date_application)
                 || (a.created_at || '').localeCompare(b.created_at || ''));
-  return v.map((t,i) => {
+  // Une confirmation "sans changement" est un jalon administratif, pas une
+  // nouvelle version de prix : elle ne referme jamais la période du tarif
+  // qui la précède, et n'est donc jamais comptée comme "à venir" ni "en
+  // vigueur", quelle que soit sa date d'application.
+  const structurantes = v.filter(t => t.etat !== 'PAS DE MODIF');
+  const calc = {};
+  structurantes.forEach((t,i) => {
     const debut = jour(t.date_application);
-    const apres = v.slice(i+1);
+    const apres = structurantes.slice(i+1);
     // Seule une version postérieure clôt une période. Une correction du même jour la remplace.
     const remplacee = apres.some(x => x.date_application === t.date_application);
     const suivante  = apres.find(x => x.date_application > t.date_application);
@@ -474,7 +480,12 @@ function versions(fid){
     if(remplacee)                 statut = 'Remplacé';
     else if(debut > AUJ())        statut = 'À venir';
     else if(!fin || fin >= AUJ()) statut = 'En vigueur';
-    return {...t, debut, fin, statut, remplacee};
+    calc[t.id] = {debut, fin, statut, remplacee};
+  });
+  return v.map((t) => {
+    if(t.etat === 'PAS DE MODIF')
+      return {...t, debut:jour(t.date_application), fin:null, statut:'Inchangé', remplacee:false};
+    return {...t, ...calc[t.id]};
   });
 }
 
@@ -502,7 +513,7 @@ function idsRemplaces(){
 // Situation d'un fournisseur : dernier tarif, échéance, alerte.
 function situation(f){
   const v = versions(f.id);
-  const enCours = [...v].reverse().find(x => x.debut <= AUJ() && !x.remplacee) || null;
+  const enCours = [...v].reverse().find(x => x.statut !== 'Inchangé' && x.debut <= AUJ() && !x.remplacee) || null;
   const verifie = jour(f.verifie_le);
 
   if(f.mode_suivi === 'Sans surveillance')
@@ -1008,7 +1019,7 @@ function dessinerFiche(){
         <div class="jalon ${v.statut==='En vigueur'?'vigueur':v.statut==='À venir'?'venir':''}"
              ${v.remplacee ? 'style="opacity:.6"' : ''}>
           <div class="quand">${v.debut.toLocaleDateString('fr-FR')}
-            <span class="etiq ${v.statut==='À venir'?'venir':v.statut==='En vigueur'?'':'perime'}">${v.statut}</span></div>
+            <span class="etiq ${v.statut==='À venir'?'venir':v.statut==='En vigueur'?'':v.statut==='Inchangé'?'e-fait':'perime'}">${v.statut}</span></div>
           <div class="quoi">${esc(v.reference || 'Version sans référence')}
             ${v.evolution!=null ? ` · ${v.evolution>0?'+':''}${v.evolution} %` : ''}
             ${v.remplacee ? ' · corrigé par une saisie postérieure'
