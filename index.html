@@ -360,6 +360,13 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
     .eh-grid { grid-template-columns: 1fr; gap:12px; }
     .eh-axis { display:none; }
   }
+  .app-header { display:grid; grid-template-columns: 1fr auto 1fr; align-items:center; }
+  .app-header-tabs { justify-self:center; }
+  .app-header-gear { justify-self:end; }
+  @media (max-width: 680px) {
+    .app-header { grid-template-columns: 1fr; gap:10px; }
+    .app-header-tabs, .app-header-gear { justify-self:center; }
+  }
 </style>
 </head>
 <body>
@@ -920,15 +927,17 @@ function App() {
           <button onClick={() => setSyncError(false)} style={{background:"none",border:"none",color:"#A33327",cursor:"pointer"}}>✕</button>
         </div>
       )}
-      <div className="flex" style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"18px 20px",borderBottom:`1px solid ${C.border}`}}>
+      <div className="app-header" style={{padding:"18px 20px",borderBottom:`1px solid ${C.border}`}}>
         <div>
           <div className="disp" style={{fontSize:20,fontWeight:700}}>Suivi de charge & tâches</div>
           <div className="mono" style={{fontSize:11,color:C.faint,marginTop:2}}>charge visible + charge invisible + tâches</div>
         </div>
-        <div style={{display:"flex",gap:8}}>
+        <div className="app-header-tabs" style={{display:"flex",gap:8}}>
           <TabBtn active={tab==="saisie"} onClick={()=>setTab("saisie")}>Saisie</TabBtn>
           <TabBtn active={tab==="dashboard"} onClick={()=>setTab("dashboard")}>Tableau de bord</TabBtn>
           <TabBtn active={tab==="taches"} onClick={()=>setTab("taches")}>Tâches{untriagedCount>0?` (${untriagedCount})`:""}</TabBtn>
+        </div>
+        <div className="app-header-gear">
           <button onClick={()=>setShowSettings(s=>!s)} style={{padding:8,borderRadius:12,border:`1px solid ${C.border}`,background:C.panel,cursor:"pointer"}}>⚙️</button>
         </div>
       </div>
