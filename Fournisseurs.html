@@ -727,7 +727,6 @@ function vueAlertes(){
     <div class="compteurs">
       ${compteur('retard', n('retard'), 'sans tarif depuis trop longtemps', 'retard')}
       ${compteur('surveiller', n('surveiller'), 'échéances sous 30 jours', 'surveiller')}
-      ${compteur('sans-tarif', n('sans-tarif'), 'aucun tarif enregistré', '')}
       ${compteur('relance', n('relance') + n('relance-muette'), 'demandes en attente', 'demande')}
       ${compteur('preparer', preparer.length, 'tarifs à préparer', 'preparer')}
       ${compteur('tiers', tiers.length, "en attente d'un tiers", 'demande')}
