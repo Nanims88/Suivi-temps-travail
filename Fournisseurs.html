@@ -287,6 +287,7 @@ dialog .pied{padding:14px 22px;border-top:1px solid var(--trait);display:flex;ga
 
 <script type="module">
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import * as XLSX from 'https://esm.sh/xlsx@0.18.5';
 
 /* =====================================================================
    1. CONFIGURATION - à remplir une seule fois
@@ -421,7 +422,7 @@ function toast(msg){
 /* =====================================================================
    4. État
    ===================================================================== */
-let D = { fournisseurs:[], tarifs:[], conditions:[], journal:[], tarifsParFournisseur:{} };
+let D = { fournisseurs:[], tarifs:[], conditions:[], journal:[], conditionsNationales:[], tarifsParFournisseur:{}, conditionsNationalesParFournisseur:{} };
 let vueCourante = 'alertes';
 let ficheOuverte = null;
 
@@ -444,17 +445,21 @@ async function tout(table, tri, croissant = true){
 }
 
 async function charger(){
-  const [f,t,c,j] = await Promise.all([
+  const [f,t,c,j,cn] = await Promise.all([
     tout('fournisseurs', 'raison_sociale'),
     tout('tarifs', 'date_application'),
     tout('conditions', 'date_debut'),
     tout('journal', 'date', false),
+    tout('conditions_nationales', 'annee', false),
   ]);
-  // Regroupement précalculé, réutilisé par versions()/idsRemplaces() pour
-  // éviter de reparcourir tous les tarifs à chaque fournisseur.
+  // Regroupements précalculés, réutilisés pour éviter de reparcourir toute
+  // la table à chaque fournisseur.
   const tarifsParFournisseur = {};
   t.forEach(x => (tarifsParFournisseur[x.fournisseur_id] ??= []).push(x));
-  D = { fournisseurs:f, tarifs:t, conditions:c, journal:j, tarifsParFournisseur };
+  const conditionsNationalesParFournisseur = {};
+  cn.forEach(x => (conditionsNationalesParFournisseur[x.fournisseur_id] ??= []).push(x));
+  D = { fournisseurs:f, tarifs:t, conditions:c, journal:j, conditionsNationales:cn,
+        tarifsParFournisseur, conditionsNationalesParFournisseur };
 }
 
 /* =====================================================================
@@ -984,6 +989,7 @@ function dessinerFiche(){
   const s = situation(f);
   const cond = D.conditions.filter(c => c.fournisseur_id === f.id);
   const jour_ = D.journal.filter(j => j.fournisseur_id === f.id);
+  const condNat = D.conditionsNationalesParFournisseur[f.id] || [];
 
   const info = (l,v) => `<div><span>${l}</span><b>${esc(v ?? '-')}</b></div>`;
 
@@ -1063,6 +1069,32 @@ function dessinerFiche(){
           </tr>`;}).join('')}</tbody></table>`
         : `<div class="vide">Aucune condition enregistrée.</div>`}
     </section>
+
+    ${condNat.length ? `
+    <section class="bloc">
+      <div class="bloc-titre"><h2>Conditions négociées nationalement (IVRPM)</h2><span class="compte">${condNat.length}</span></div>
+      <p style="margin:0 0 12px;font-size:14px;color:var(--encre-doux)">Importées du fichier national, par code fournisseur.
+      Lecture seule : la mise à jour se fait par un nouvel import (onglet Données), pas ligne par ligne.</p>
+      ${[...new Set(condNat.map(c => c.annee))].sort((a,b) => b-a).map(annee => {
+        const lot = condNat.filter(c => c.annee === annee);
+        const logistique = lot.filter(c => c.categorie === 'logistique');
+        const remises = lot.filter(c => c.categorie === 'remise');
+        return `<div style="margin-bottom:16px">
+          <div style="font-weight:700;margin-bottom:6px">Année ${annee}</div>
+          ${logistique.length ? `<table><thead><tr><th>Condition logistique</th><th>Valeur</th></tr></thead>
+            <tbody>${logistique.map(c => `<tr>
+              <td>${esc(c.libelle)}</td>
+              <td>${c.valeur_texte ? esc(c.valeur_texte) : '-'}${c.commentaire ? ' · ' + esc(c.commentaire) : ''}</td>
+            </tr>`).join('')}</tbody></table>` : ''}
+          ${remises.length ? `<table style="margin-top:${logistique.length?8:0}px"><thead><tr><th>Grand marché</th><th>Remise</th><th>Taux</th></tr></thead>
+            <tbody>${remises.map(c => `<tr>
+              <td>${esc(c.grand_marche || '-')}</td>
+              <td>${esc(c.libelle)}</td>
+              <td>${c.valeur_texte ? esc(c.valeur_texte) : '-'}</td>
+            </tr>`).join('')}</tbody></table>` : ''}
+        </div>`;
+      }).join('')}
+    </section>` : ''}
 
     <section class="bloc">
       <div class="bloc-titre"><h2>Historique des échanges</h2><span class="compte">${jour_.length}</span></div>
@@ -1285,6 +1317,142 @@ async function importer(table, texte){
   return {enregistres, erreurs, inconnues, total:lignes.length - 1};
 }
 
+/* ---------- import des conditions nationales (fichier IVRPM annuel, .xlsx) ---------- */
+// Deux feuilles : remises commerciales et conditions logistiques. On ne
+// retient que les lignes "Structure(s) de stockage" (le type de client qui
+// concerne une plateforme comme SICAAP), rattachées par code fournisseur.
+// Écrit exclusivement dans conditions_nationales : ne touche jamais
+// fournisseurs, conditions ou tarifs, remplis à la main.
+const estStructureStockage = v => /structures?\s+de\s+stockage/i.test(String(v ?? ''));
+
+function normaliserCode(v){
+  if(v === null || v === undefined) return '';
+  let s = String(v).trim();
+  if(/^\d+\.0$/.test(s)) s = s.slice(0, -2);
+  return s;
+}
+
+// Cherche, dans les premières lignes, celle qui contient une colonne "code
+// fournisseur" : reste robuste si des lignes de titre bougent d'une année à l'autre.
+function trouverEntete(rows){
+  for(let i = 0; i < Math.min(rows.length, 8); i++){
+    const cols = (rows[i] || []).map(v => sansAccent(v || ''));
+    if(cols.some(c => c.includes('codefournisseur') || c.includes('codesapfournisseur'))) return i;
+  }
+  return -1;
+}
+// correspondances : {champ: [mots-clés normalisés recherchés dans l'en-tête]}
+function indexColonnes(entete, correspondances){
+  const idx = {};
+  entete.forEach((titre, i) => {
+    const t = sansAccent(titre || '');
+    for(const [champ, mots] of Object.entries(correspondances))
+      if(idx[champ] === undefined && mots.some(m => t.includes(m))) idx[champ] = i;
+  });
+  return idx;
+}
+// Sépare "800 Euros", "21 Jours ouvrés" en valeur numérique + unité.
+function analyserValeur(brut){
+  const s = String(brut ?? '').trim();
+  if(!s) return {texte:null, num:null, unite:null};
+  const m = s.match(/^(-?[\d\s]+(?:[.,]\d+)?)\s*(.*)$/);
+  if(!m) return {texte:s, num:null, unite:null};
+  const num = Number(m[1].replace(/\s/g,'').replace(',','.'));
+  return {texte:s, num:isNaN(num) ? null : num, unite:m[2].trim() || null};
+}
+
+async function importerConditionsNationales(file, annee){
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(new Uint8Array(buf), {type:'array'});
+  const nomLogistique = wb.SheetNames.find(n => /logist/i.test(n));
+  const nomRemises = wb.SheetNames.find(n => n !== nomLogistique);
+  if(!nomLogistique || !nomRemises)
+    return {erreurs:['Le fichier doit contenir une feuille "Conditions" et une feuille "Logistique".']};
+
+  const parCode = {};
+  D.fournisseurs.forEach(f => { parCode[normaliserCode(f.code)] = f; });
+  const inconnus = new Set(), fournisseursTouches = new Set(), lignes = [];
+
+  {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[nomRemises], {header:1, defval:null});
+    const li = trouverEntete(rows);
+    if(li === -1) return {erreurs:[`Colonne "Code fournisseur" introuvable dans la feuille "${nomRemises}".`]};
+    const idx = indexColonnes(rows[li], {
+      code: ['codefournisseurenseigne', 'codesapfournisseur', 'codefournisseur'],
+      typeClient: ['libelletypeclientcontrat'],
+      grandMarche: ['libellegrandmarche'],
+      typeRemise: ['libelletyperemise'],
+      rubrique: ['libellerubrique'],
+      valeur: ['valeurlignecontrat'],
+      typeValeur: ['libelletypevaleurnego'],
+      ligneContrat: ['libelllelignecontrat', 'libellelignecontrat'],
+    });
+    rows.slice(li + 1).forEach(r => {
+      if(!r || idx.code === undefined || !estStructureStockage(r[idx.typeClient])) return;
+      const code = normaliserCode(r[idx.code]);
+      if(!code) return;
+      const f = parCode[code];
+      if(!f){ inconnus.add(code); return; }
+      fournisseursTouches.add(f.id);
+      const valeurNum = idx.valeur !== undefined ? r[idx.valeur] : null;
+      // "Taux (%)", "Forfait (€)"... -> on garde le symbole entre parenthèses, plus lisible.
+      const uniteBrute = idx.typeValeur !== undefined ? (String(r[idx.typeValeur] || '').trim() || null) : null;
+      const unite = uniteBrute ? ((uniteBrute.match(/\(([^)]+)\)/) || [])[1] || uniteBrute) : null;
+      const num = typeof valeurNum === 'number' ? valeurNum : versNombre(valeurNum);
+      lignes.push({
+        fournisseur_id: f.id, annee, categorie: 'remise',
+        grand_marche: idx.grandMarche !== undefined ? (r[idx.grandMarche] || null) : null,
+        libelle: [idx.typeRemise !== undefined && r[idx.typeRemise], idx.rubrique !== undefined && r[idx.rubrique]]
+          .filter(Boolean).join(' — ') || 'Remise',
+        valeur_texte: num !== null ? `${num}${unite ? ' ' + unite : ''}` : null,
+        valeur_num: num, unite,
+        commentaire: idx.ligneContrat !== undefined ? (r[idx.ligneContrat] || null) : null,
+      });
+    });
+  }
+
+  {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[nomLogistique], {header:1, defval:null});
+    const li = trouverEntete(rows);
+    if(li === -1) return {erreurs:[`Colonne "Code fournisseur" introuvable dans la feuille "${nomLogistique}".`]};
+    const idx = indexColonnes(rows[li], {
+      code: ['codesapfournisseur', 'codefournisseurenseigne', 'codefournisseur'],
+      categorie: ['categorielogistique'],
+      ligne: ['lignelogistique'],
+      valeur: ['valeur'],
+      commentaire: ['commentaire'],
+    });
+    rows.slice(li + 1).forEach(r => {
+      if(!r || idx.code === undefined || !estStructureStockage(r[idx.categorie])) return;
+      const code = normaliserCode(r[idx.code]);
+      if(!code) return;
+      const f = parCode[code];
+      if(!f){ inconnus.add(code); return; }
+      fournisseursTouches.add(f.id);
+      const {texte, num, unite} = analyserValeur(idx.valeur !== undefined ? r[idx.valeur] : null);
+      lignes.push({
+        fournisseur_id: f.id, annee, categorie: 'logistique',
+        grand_marche: idx.categorie !== undefined ? (r[idx.categorie] || null) : null,
+        libelle: (idx.ligne !== undefined && r[idx.ligne]) || 'Condition logistique',
+        valeur_texte: texte, valeur_num: num, unite,
+        commentaire: idx.commentaire !== undefined ? (r[idx.commentaire] || null) : null,
+      });
+    });
+  }
+
+  if(!lignes.length) return {erreurs:['Aucune ligne "Structure(s) de stockage" reconnue dans ce fichier.']};
+
+  await db.from('conditions_nationales').delete().eq('annee', annee);
+  let enregistres = 0;
+  for(let i = 0; i < lignes.length; i += 500){
+    const lot = lignes.slice(i, i + 500);
+    const r = await db.from('conditions_nationales').insert(lot);
+    if(r.error) return {erreurs:[`Enregistrement interrompu : ${r.error.message}`], enregistres};
+    enregistres += lot.length;
+  }
+  return {enregistres, fournisseurs: fournisseursTouches.size, inconnus: [...inconnus].sort()};
+}
+
 function vueDonnees(){
   const options = Object.entries(TABLES)
     .map(([k,v]) => `<option value="${k}">${v.l}</option>`).join('');
@@ -1327,6 +1495,25 @@ function vueDonnees(){
       Importer deux fois le même fichier créera des doublons.</p>
       <p style="margin:0"><b>Ordre à respecter</b> : les fournisseurs d'abord, le reste ensuite,
       car les autres tables se rattachent à eux par le code.</p>
+    </div>
+
+    <div class="bloc-titre" style="margin-top:30px"><h2>Conditions nationales (IVRPM)</h2></div>
+    <div class="liste" style="padding:16px">
+      <p style="margin:0 0 14px">Fichier annuel des remises et conditions logistiques négociées par le national
+      pour le réseau et les structures de stockage. Seules les lignes <b>"Structure(s) de stockage"</b> sont
+      importées, rattachées à vos fournisseurs par leur code. Ça n'écrit que dans un espace dédié : jamais dans
+      les fiches fournisseurs, tarifs ou conditions saisis à la main. Réimporter la même année remplace
+      proprement cette année-là, sans créer de doublon.</p>
+      <div class="champ">
+        <label for="cn-annee">Année de ces conditions</label>
+        <input type="number" id="cn-annee" value="${new Date().getFullYear()}" style="max-width:120px">
+      </div>
+      <div class="champ">
+        <label for="cn-fichier">Fichier Excel (.xlsx)</label>
+        <input type="file" id="cn-fichier" accept=".xlsx">
+      </div>
+      <button class="btn" id="btn-importer-national">Importer</button>
+      <div id="rapport-national"></div>
     </div>`;
 
   document.querySelectorAll('[data-export]').forEach(b => b.addEventListener('click', () => {
@@ -1361,6 +1548,33 @@ function vueDonnees(){
         bloc.push(`<div class="message" style="background:#FDF0D4">Colonnes ignorées car non reconnues : ${res.inconnues.map(esc).join(', ')}.</div>`);
       if(res.erreurs?.length)
         bloc.push(`<div class="message erreur">${res.erreurs.length} ligne${res.erreurs.length>1?'s':''} rejetée${res.erreurs.length>1?'s':''} :<br>${res.erreurs.slice(0,15).map(esc).join('<br>')}${res.erreurs.length>15?'<br>...':''}</div>`);
+      r.innerHTML = '<div style="margin-top:16px">' + bloc.join('') + '</div>';
+    }catch(e){
+      r.innerHTML = `<div class="message erreur" style="margin-top:16px">Import impossible : ${esc(e.message)}</div>`;
+    }
+  });
+
+  $('#btn-importer-national').addEventListener('click', async () => {
+    const f = $('#cn-fichier').files[0];
+    const annee = parseInt($('#cn-annee').value, 10);
+    const r = $('#rapport-national');
+    if(!f){ toast('Choisir un fichier'); return; }
+    if(!annee){ toast('Indiquer une année'); return; }
+    r.innerHTML = '<div class="message ok" style="margin-top:16px">Lecture en cours...</div>';
+    try{
+      const res = await importerConditionsNationales(f, annee);
+      const bloc = [];
+      if(res.enregistres){
+        await charger();
+        bloc.push(`<div class="message ok">${res.enregistres} ligne${res.enregistres>1?'s':''} importée${res.enregistres>1?'s':''}
+          pour ${res.fournisseurs} fournisseur${res.fournisseurs>1?'s':''} (année ${annee}).</div>`);
+      }
+      if(res.inconnus?.length)
+        bloc.push(`<div class="message" style="background:#FDF0D4">${res.inconnus.length} code${res.inconnus.length>1?'s':''}
+          du fichier sans fournisseur correspondant chez vous, ignoré${res.inconnus.length>1?'s':''} :
+          ${res.inconnus.slice(0,30).map(esc).join(', ')}${res.inconnus.length>30?'…':''}</div>`);
+      if(res.erreurs?.length)
+        bloc.push(`<div class="message erreur">${res.erreurs.map(esc).join('<br>')}</div>`);
       r.innerHTML = '<div style="margin-top:16px">' + bloc.join('') + '</div>';
     }catch(e){
       r.innerHTML = `<div class="message erreur" style="margin-top:16px">Import impossible : ${esc(e.message)}</div>`;
