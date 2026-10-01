@@ -430,6 +430,7 @@ const CATS = [
       "Sollicitation — Appro", "Sollicitation — Compta", "Sollicitation — Achats", "Sollicitation — Direction", "Sollicitation — Réception", "Sollicitation — Logistique", "Sollicitation — ADV"] },
 ];
 const catByKey = (k) => CATS.find((c) => c.key === k);
+const CATEGORY_COLUMNS = [{ key: null, label: "Sans catégorie", color: C.muted }, ...CATS.map((c) => ({ key: c.key, label: c.label, color: c.color }))];
 
 const PRESETS = [
   { label: "Vérif MAJ veille", cat: "tarifs", sub: "Vérification MAJ tarifs (veille)" },
@@ -558,6 +559,7 @@ function App() {
   const [urgentOnly, setUrgentOnly] = useState(false);
   const [taskView, setTaskView] = useState("liste");
   const [editingTaskId, setEditingTaskId] = useState(null);
+  const [collapsedGroups, setCollapsedGroups] = useState({});
   const [timeLogTask, setTimeLogTask] = useState(null);
   const [timeLogMin, setTimeLogMin] = useState(0);
   const [timeLogCat, setTimeLogCat] = useState("support");
@@ -638,6 +640,7 @@ function App() {
   const toggleImportant = (t) => updateTask(t.id, { important: !t.important });
   const moveTaskToQuadrant = (id, urgent, important) => updateTask(id, { priority: urgent ? "urgente" : "normale", important });
   const setTaskCategory = (t, cat) => updateTask(t.id, { category: cat || null });
+  const setTaskCategoryById = (id, cat) => updateTask(id, { category: cat || null });
   const setTaskText = (t, text) => updateTask(t.id, { text });
 
   /* -------- Tâches : cycle de statut, lié au suivi de temps -------- */
@@ -690,6 +693,17 @@ function App() {
       (urgent && important ? q.faire : !urgent && important ? q.planifier : urgent && !important ? q.deleguer : q.eliminer).push(t);
     });
     return q;
+  }, [filteredTasks]);
+  const groupedTasks = useMemo(() => {
+    const map = new Map(CATEGORY_COLUMNS.map((c) => [c.key, { ...c, tasks: [] }]));
+    visibleTasks.forEach((t) => { const g = map.get(t.category || null) || map.get(null); g.tasks.push(t); });
+    return [...map.values()].filter((g) => g.tasks.length > 0);
+  }, [visibleTasks]);
+  const toggleGroupCollapsed = (key) => setCollapsedGroups((prev) => ({ ...prev, [key ?? "none"]: !prev[key ?? "none"] }));
+  const boardColumns = useMemo(() => {
+    const map = new Map(CATEGORY_COLUMNS.map((c) => [c.key, { ...c, tasks: [] }]));
+    [...filteredTasks].sort((a,b)=>b.created_at-a.created_at).forEach((t) => { const g = map.get(t.category || null) || map.get(null); g.tasks.push(t); });
+    return [...map.values()];
   }, [filteredTasks]);
   const exportTasksCSV = () => {
     const headers = ["texte","statut","priorite","categorie","cree_le"];
@@ -1198,7 +1212,7 @@ function App() {
       )}
 
       {tab === "taches" && (
-        <div style={{padding:"20px clamp(20px,4vw,56px)",maxWidth:taskView==="matrice"?1800:1200,margin:"0 auto"}}>
+        <div style={{padding:"20px clamp(20px,4vw,56px)",maxWidth:taskView==="matrice"?1800:taskView==="tableau"?"100%":1200,margin:"0 auto"}}>
           <div style={{display:"flex",gap:8,marginBottom:16}}>
             <input
               value={quickText}
@@ -1213,7 +1227,7 @@ function App() {
           </div>
 
           <div style={{display:"flex",gap:4,background:C.panel,borderRadius:999,padding:3,border:`1px solid ${C.border}`,marginBottom:16,width:"fit-content"}}>
-            {[["liste","☰ Liste"],["matrice","▦ Matrice d'Eisenhower"]].map(([k,label]) => (
+            {[["liste","☰ Liste"],["tableau","🗂️ Tableau"],["matrice","▦ Matrice d'Eisenhower"]].map(([k,label]) => (
               <button key={k} onClick={()=>setTaskView(k)} style={{padding:"6px 14px",borderRadius:999,fontSize:13,
                 background:taskView===k?C.panel2:"transparent", color:taskView===k?C.text:C.muted, border:"none",cursor:"pointer"}}>{label}</button>
             ))}
@@ -1251,15 +1265,42 @@ function App() {
           </div>
 
           {taskView === "liste" ? (
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <div style={{display:"flex",flexDirection:"column",gap:18}}>
               {visibleTasks.length === 0 && <div style={{color:C.muted,fontSize:13,textAlign:"center",padding:"30px 0"}}>Aucune tâche ici.</div>}
-              {visibleTasks.map((t) => (
-                <TaskRow key={t.id} t={t} editing={editingTaskId===t.id}
-                  onCycleStatus={()=>requestStatusCycle(t)} onTogglePriority={()=>togglePriority(t)} onToggleImportant={()=>toggleImportant(t)}
-                  onSetCategory={(cat)=>setTaskCategory(t,cat)} onDelete={()=>deleteTask(t.id)}
-                  onEditStart={()=>setEditingTaskId(t.id)} onEditSave={(text)=>{setTaskText(t,text);setEditingTaskId(null);}} onEditCancel={()=>setEditingTaskId(null)} />
-              ))}
+              {groupedTasks.map((g) => {
+                const gid = g.key ?? "none";
+                const collapsed = !!collapsedGroups[gid];
+                return (
+                  <div key={gid}>
+                    <button onClick={()=>toggleGroupCollapsed(g.key)} style={{display:"flex",alignItems:"center",gap:8,width:"100%",
+                      textAlign:"left",background:"none",border:"none",cursor:"pointer",padding:"4px 2px",marginBottom:8}}>
+                      <span style={{fontSize:10,color:C.muted,display:"inline-block",transition:"transform .15s ease",
+                        transform:collapsed?"rotate(-90deg)":"none"}}>▾</span>
+                      <span style={{width:9,height:9,borderRadius:999,background:g.color,flexShrink:0}} />
+                      <span style={{fontSize:13,fontWeight:700,color:C.text}}>{g.label}</span>
+                      <span className="mono" style={{fontSize:11,color:C.muted}}>({g.tasks.length})</span>
+                      <div style={{flex:1,borderBottom:`1px solid ${C.border}`,marginLeft:6}} />
+                    </button>
+                    {!collapsed && (
+                      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                        {g.tasks.map((t) => (
+                          <TaskRow key={t.id} t={t} editing={editingTaskId===t.id}
+                            onCycleStatus={()=>requestStatusCycle(t)} onTogglePriority={()=>togglePriority(t)} onToggleImportant={()=>toggleImportant(t)}
+                            onSetCategory={(cat)=>setTaskCategory(t,cat)} onDelete={()=>deleteTask(t.id)}
+                            onEditStart={()=>setEditingTaskId(t.id)} onEditSave={(text)=>{setTaskText(t,text);setEditingTaskId(null);}} onEditCancel={()=>setEditingTaskId(null)} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
+          ) : taskView === "tableau" ? (
+            <CategoryBoard columns={boardColumns} editingTaskId={editingTaskId}
+              onCycleStatus={(t)=>requestStatusCycle(t)} onTogglePriority={togglePriority} onToggleImportant={toggleImportant}
+              onDelete={(id)=>deleteTask(id)}
+              onEditStart={(id)=>setEditingTaskId(id)} onEditSave={(t,text)=>{setTaskText(t,text);setEditingTaskId(null);}} onEditCancel={()=>setEditingTaskId(null)}
+              onMoveCategory={setTaskCategoryById} />
           ) : (
             <EisenhowerMatrix quadrants={matrixQuadrants} editingTaskId={editingTaskId}
               onCycleStatus={(t)=>requestStatusCycle(t)} onDelete={(id)=>deleteTask(id)}
@@ -1656,6 +1697,74 @@ function MatrixCard({t,editing,dragging,onDragStart,onDragEnd,onCycleStatus,onDe
           );
         })}
       </div>
+    </div>
+  );
+}
+function BoardCard({t,editing,dragging,onDragStart,onDragEnd,onCycleStatus,onTogglePriority,onToggleImportant,onDelete,onEditStart,onEditSave,onEditCancel}) {
+  const s = statusByKey(t.status);
+  const [draft,setDraft] = useState(t.text);
+  const isDone = t.status === "fait";
+  return (
+    <div draggable
+      onDragStart={(e)=>{e.dataTransfer.setData("text/plain", t.id); e.dataTransfer.effectAllowed="move"; onDragStart();}}
+      onDragEnd={onDragEnd}
+      style={{display:"flex",flexDirection:"column",gap:6,padding:"8px 10px",background:C.panel,borderRadius:12,border:`1px solid ${C.border2}`,boxShadow:"0 1px 2px rgba(22,48,46,0.06)",
+        cursor:"grab",opacity:dragging?0.4:1}}>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <button onClick={onCycleStatus} title="Changer le statut" style={{
+          width:16,height:16,borderRadius:999,border:`2px solid ${s.color}`,background:isDone?s.color:"transparent",
+          display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",padding:0}}>
+          {isDone && <span style={{color:"#16302E",fontSize:9,lineHeight:1,fontWeight:700}}>✓</span>}
+        </button>
+        <div style={{flex:1,minWidth:0}}>
+          {editing ? (
+            <input autoFocus value={draft} onChange={(e)=>setDraft(e.target.value)}
+              onKeyDown={(e)=>{if(e.key==="Enter") onEditSave(draft); if(e.key==="Escape") onEditCancel();}}
+              onBlur={()=>onEditSave(draft)}
+              style={{width:"100%",background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:8,padding:"3px 5px",fontSize:12,color:C.text}} />
+          ) : (
+            <span onClick={onEditStart} style={{fontSize:12,cursor:"text",textDecoration:isDone?"line-through":"none",color:isDone?C.muted:C.text,overflowWrap:"anywhere"}}>{t.text}</span>
+          )}
+        </div>
+        <button onClick={onDelete} style={{background:"none",border:"none",cursor:"pointer",padding:2,fontSize:11,flexShrink:0}} title="Supprimer">🗑️</button>
+      </div>
+      <div style={{display:"flex",gap:8,paddingLeft:24}}>
+        <button onClick={onTogglePriority} title="Marquer urgent" style={{background:"none",border:"none",cursor:"pointer",fontSize:12,opacity:t.priority==="urgente"?1:0.3,padding:0}}>🔴</button>
+        <button onClick={onToggleImportant} title="Marquer important" style={{background:"none",border:"none",cursor:"pointer",fontSize:12,opacity:t.important?1:0.3,padding:0}}>⭐</button>
+      </div>
+    </div>
+  );
+}
+function CategoryBoard({columns,editingTaskId,onCycleStatus,onTogglePriority,onToggleImportant,onDelete,onEditStart,onEditSave,onEditCancel,onMoveCategory}) {
+  const [dragOverCol, setDragOverCol] = useState(null);
+  const [draggingId, setDraggingId] = useState(null);
+  return (
+    <div style={{display:"flex",gap:12,overflowX:"auto",paddingBottom:8}}>
+      {columns.map((col) => {
+        const isOver = dragOverCol === (col.key ?? "none");
+        return (
+          <div key={col.key ?? "none"}
+            onDragOver={(e)=>{e.preventDefault(); if(dragOverCol!==(col.key ?? "none")) setDragOverCol(col.key ?? "none");}}
+            onDragLeave={()=>setDragOverCol((k)=>k===(col.key ?? "none")?null:k)}
+            onDrop={(e)=>{e.preventDefault(); const id=e.dataTransfer.getData("text/plain"); if(id) onMoveCategory(id,col.key); setDragOverCol(null); setDraggingId(null);}}
+            style={{flex:"0 0 260px",width:260,minHeight:220,background:`${col.color}14`,border:`2px ${isOver?"solid":"dashed"} ${col.color}${isOver?"":"66"}`,borderRadius:16,padding:12,
+              display:"flex",flexDirection:"column",gap:8,transition:"border-color .15s ease,background .15s ease"}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+              <span style={{width:8,height:8,borderRadius:999,background:col.color,flexShrink:0}} />
+              <div style={{fontSize:13,fontWeight:700,color:col.color,flex:1,minWidth:0,overflowWrap:"anywhere"}}>{col.label}</div>
+              <span className="mono" style={{fontSize:11,color:C.muted,flexShrink:0}}>({col.tasks.length})</span>
+            </div>
+            {col.tasks.length === 0 && <div style={{fontSize:11,color:C.muted,fontStyle:"italic",padding:"10px 0",textAlign:"center"}}>Glisse une tâche ici</div>}
+            {col.tasks.map((t) => (
+              <BoardCard key={t.id} t={t} editing={editingTaskId===t.id} dragging={draggingId===t.id}
+                onDragStart={()=>setDraggingId(t.id)} onDragEnd={()=>setDraggingId(null)}
+                onCycleStatus={()=>onCycleStatus(t)} onTogglePriority={()=>onTogglePriority(t)} onToggleImportant={()=>onToggleImportant(t)}
+                onDelete={()=>onDelete(t.id)}
+                onEditStart={()=>onEditStart(t.id)} onEditSave={(text)=>onEditSave(t,text)} onEditCancel={onEditCancel} />
+            ))}
+          </div>
+        );
+      })}
     </div>
   );
 }
