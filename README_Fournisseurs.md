@@ -12,6 +12,7 @@ Application web de suivi des fournisseurs : versions tarifaires, circuit de trai
 6. [Import et export](#6-import-et-export)
 7. [Structure des données](#7-structure-des-données)
 8. [Sauvegarde et dépannage](#8-sauvegarde-et-dépannage)
+9. [Conditions nationales (IVRPM)](#9-conditions-nationales-ivrpm)
 
 ---
 
@@ -35,6 +36,8 @@ Il ne stocke pas de prix par article. Un tarif est suivi comme **une version dat
 2. Coller ensuite `schema_v2.sql` et faire **Run**. Dix colonnes de processus sont ajoutées à la table des tarifs.
 3. Aller dans **Authentication > Add user > Create new user**, saisir une adresse et un mot de passe, cocher **Auto Confirm User**.
 4. Désactiver **Allow new users to sign up**, sans désactiver le fournisseur Email lui-même. Le premier réglage ferme les inscriptions, le second couperait aussi votre propre connexion.
+
+> `schema.sql` et `schema_v2.sql`, comme les fichiers cités en section 3 (`import/`, `rapprochement_erp.txt`), ont servi à la mise en place initiale et à la reprise d'historique. Ce sont des documents de travail, pas des fichiers du dépôt : ils ne sont pas versionnés ici. Pour une table ajoutée après coup, voir la migration SQL correspondante (ex. section 9 pour `conditions_nationales`).
 
 ### 2.2 Clés
 
@@ -197,8 +200,9 @@ Un fichier de fournisseurs corrigé peut donc être réimporté autant de fois q
 |---|---|
 | `fournisseurs` | Fiche signalétique et paramétrage du suivi |
 | `tarifs` | Une ligne par version reçue, avec son circuit de traitement complet |
-| `conditions` | Remises, RFA, franco, escomptes, avec leurs périodes |
+| `conditions` | Remises, RFA, franco, escomptes **saisis à la main**, avec leurs périodes |
 | `journal` | Échanges, relances, décisions, suites à donner |
+| `conditions_nationales` | Conditions logistiques et de remise négociées par le national (réseau IVRPM), importées une fois par an — voir [section 9](#9-conditions-nationales-ivrpm) |
 
 Colonnes de processus de la table `tarifs`, ajoutées par `schema_v2.sql` : état, fin de validité annoncée, évolutions achat, PC et PVGC, envoi et retour responsable, MAJ SAP, diffusion et date de diffusion, spécificités.
 
@@ -239,3 +243,27 @@ delete from auth.sessions where user_id = 'identifiant de l utilisateur';
 ```
 
 Ne jamais supprimer l'utilisateur : d'autres applications du même projet Supabase peuvent y rattacher leurs données.
+
+---
+
+## 9. Conditions nationales (IVRPM)
+
+Le national (réseau IVRPM) négocie chaque année des conditions logistiques et des remises applicables aux plateformes comme la SICAAP, diffusées sous forme de fichier Excel. L'outil permet de les importer une fois par an, sans jamais toucher aux conditions commerciales saisies à la main.
+
+### 9.1 Principe
+
+- Les conditions nationales vivent dans une table séparée, `conditions_nationales` — jamais mélangée à la table `conditions` qui reste la saisie manuelle.
+- Le rattachement se fait par **code fournisseur**, comme pour `tarifs`, `conditions` et `journal`. Le fichier national et la base SICAAP ne se recouvrent pas entièrement : les codes du fichier absents de SICAAP sont ignorés, de même que les fournisseurs SICAAP absents du fichier.
+- Seules les lignes marquées **« Structure(s) de stockage »** dans le fichier sont importées ; les lignes « Réseau » sont ignorées, car elles ne concernent pas une plateforme comme la SICAAP.
+- Un réimport pour une année donnée **supprime puis réinsère uniquement les lignes de cette année**. Les autres années, la table `conditions`, et tout le reste des données restent intacts. L'opération peut donc être relancée sans risque en cas d'erreur ou de fichier corrigé.
+
+### 9.2 Import annuel
+
+1. Onglet **Données**, bloc **Conditions nationales (IVRPM)**.
+2. Choisir l'année concernée.
+3. Sélectionner le fichier Excel transmis par le national.
+4. Cliquer sur **Importer**. Le rapport affiché indique le nombre de lignes enregistrées, le nombre de fournisseurs concernés, et le nombre de codes du fichier ignorés faute de correspondance.
+
+### 9.3 Consultation
+
+Sur la fiche fournisseur, une section **« Conditions négociées nationalement (IVRPM) »** affiche, en lecture seule et groupées par année, les lignes importées pour ce fournisseur — à distinguer de la section « Conditions commerciales », qui reste la saisie manuelle et reste modifiable normalement.
