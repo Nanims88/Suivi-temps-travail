@@ -1543,10 +1543,13 @@ function App() {
             const weekStart = startOfWeek(new Date());
             const todayIsoNow = toISO(new Date());
             const autresFreq = FREQUENCES.filter((f) => f.addMonths);
+            const todayIso7 = (new Date().getDay()+6)%7;
+            const todayStart = todayIso7 > 4 ? 0 : todayIso7;
+            const orderedWeekdays = [...WEEKDAYS.slice(todayStart), ...WEEKDAYS.slice(0, todayStart)];
             return (
               <div>
                 <div className="routines-week">
-                  {WEEKDAYS.map((w) => {
+                  {orderedWeekdays.map((w) => {
                     const date = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate()+w.key);
                     const isToday = toISO(date) === todayIsoNow;
                     const dayRoutines = filteredRoutines.filter((r) => r.frequency === "jour" || (r.frequency === "semaine" && r.weekday === w.key));
