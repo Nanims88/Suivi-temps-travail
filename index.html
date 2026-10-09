@@ -470,6 +470,16 @@ const STATUS = [
 const statusByKey = (k) => STATUS.find((s) => s.key === k) || STATUS[0];
 const nextStatus = (k) => { const i = STATUS.findIndex((s) => s.key === k); return STATUS[(i + 1) % STATUS.length].key; };
 
+/* ======================= ROUTINES ======================= */
+const FREQUENCES = [
+  { key: "jour",     label: "Journalières",  short: "Jour",    icon: "☀️", addDays: 1 },
+  { key: "semaine",  label: "Hebdomadaires", short: "Semaine", icon: "📅", addDays: 7 },
+  { key: "mois",     label: "Mensuelles",    short: "Mois",    icon: "🗓️", addMonths: 1 },
+  { key: "semestre", label: "Semestrielles", short: "6 mois",  icon: "🌓", addMonths: 6 },
+  { key: "an",       label: "Annuelles",     short: "An",      icon: "🎉", addMonths: 12 },
+];
+const freqByKey = (k) => FREQUENCES.find((f) => f.key === k) || FREQUENCES[1];
+
 /* ======================= HELPERS ======================= */
 const pad = (n) => String(n).padStart(2, "0");
 const toISO = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -492,6 +502,23 @@ const startOfWeek = (date) => { const d=new Date(date); const day=(d.getDay()+6)
 const endOfWeek = (date) => { const s=startOfWeek(date); const e=new Date(s); e.setDate(s.getDate()+6); return e; };
 const startOfMonth = (date) => new Date(date.getFullYear(), date.getMonth(), 1);
 const endOfMonth = (date) => new Date(date.getFullYear(), date.getMonth()+1, 0);
+const addMonthsClamped = (d, n) => {
+  const day = d.getDate();
+  const r = new Date(d.getFullYear(), d.getMonth()+n, 1);
+  r.setDate(Math.min(day, endOfMonth(r).getDate()));
+  return r;
+};
+const nextRoutineDue = (routine) => {
+  if (!routine.last_done_at) return null;
+  const f = freqByKey(routine.frequency);
+  const last = new Date(routine.last_done_at);
+  return f.addMonths ? addMonthsClamped(last, f.addMonths) : (() => { const r = new Date(last); r.setDate(r.getDate()+f.addDays); return r; })();
+};
+const isRoutineDone = (routine) => {
+  const next = nextRoutineDue(routine);
+  return !!next && toISO(new Date()) < toISO(next);
+};
+const frDate = (ts) => new Date(ts).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
 const fmtDayLabel = (d) => d.toLocaleDateString("fr-FR", { weekday: "short" });
 const getWeeksInMonth = (date) => endOfMonth(date).getDate() / 7;
 const startOfYear = (date) => new Date(date.getFullYear(), 0, 1);
@@ -536,7 +563,12 @@ function App() {
   const [projects, setProjects] = useState([]);
   const [newProject, setNewProject] = useState("");
   const [, setTick] = useState(0);
-  const [tab, setTab] = useState(() => (typeof window !== "undefined" && window.location.hash === "#taches") ? "taches" : "saisie");
+  const [tab, setTab] = useState(() => {
+    if (typeof window === "undefined") return "saisie";
+    if (window.location.hash === "#taches") return "taches";
+    if (window.location.hash === "#routines") return "routines";
+    return "saisie";
+  });
   const [refDate, setRefDate] = useState(new Date());
   const [period, setPeriod] = useState("jour");
   const [historySearch, setHistorySearch] = useState("");
@@ -570,18 +602,27 @@ function App() {
   const [timeLogCat, setTimeLogCat] = useState("support");
   const [timeLogSub, setTimeLogSub] = useState(null);
 
+  /* -------- état Routines -------- */
+  const [routines, setRoutines] = useState([]);
+  const [routineCatFilter, setRoutineCatFilter] = useState(null);
+  const [routineStatusFilter, setRoutineStatusFilter] = useState("toutes");
+  const [routineEditor, setRoutineEditor] = useState(null);
+  const [routineCheck, setRoutineCheck] = useState(null);
+  const [routineCheckMin, setRoutineCheckMin] = useState(0);
+
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 1600); };
 
   /* -------- load from Supabase -------- */
   const loadAll = useCallback(async () => {
     setLoaded(false);
     try {
-      const [e, s, d, p, tk] = await Promise.all([
+      const [e, s, d, p, tk, rt] = await Promise.all([
         sb.from("entries").select("*").order("date", { ascending: false }),
         sb.from("app_settings").select("*").eq("id", 1).maybeSingle(),
         sb.from("day_logs").select("*"),
         sb.from("projects").select("*").order("name"),
         sb.from("tasks").select("*").order("created_at", { ascending: false }),
+        sb.from("routines").select("*").order("created_at", { ascending: false }),
       ]);
       setEntries(e.data || []);
       setSettings(s.data ? { weeklyHours: Number(s.data.weekly_hours) } : { weeklyHours: 35 });
@@ -590,6 +631,7 @@ function App() {
       setDayLogs(dl);
       setProjects((p.data || []).map((r) => r.name));
       setTasks(tk.data || []);
+      setRoutines(rt.data || []);
     } catch (err) {
       console.error(err);
       setSyncError(true);
@@ -671,6 +713,47 @@ function App() {
     updateTask(timeLogTask.id, { status: "fait" });
     setTimeLogTask(null);
   };
+
+  /* -------- Routines : CRUD -------- */
+  const addRoutine = async (data) => {
+    const now = Date.now();
+    const routine = { id: uid(), text: data.text.trim(), category: data.category, sub: data.sub,
+      frequency: data.frequency, default_minutes: data.default_minutes || 15, last_done_at: null,
+      created_at: now, updated_at: now };
+    setRoutines((prev) => [routine, ...prev]);
+    const { error } = await sb.from("routines").insert(routine);
+    if (error) { console.error(error); setSyncError(true); } else { showToast("🔁 Routine créée"); }
+  };
+  const updateRoutine = async (id, patch) => {
+    const full = { ...patch, updated_at: Date.now() };
+    setRoutines((prev) => prev.map((r) => r.id === id ? { ...r, ...full } : r));
+    const { error } = await sb.from("routines").update(full).eq("id", id);
+    if (error) setSyncError(true);
+  };
+  const deleteRoutine = async (id) => {
+    setRoutines((prev) => prev.filter((r) => r.id !== id));
+    const { error } = await sb.from("routines").delete().eq("id", id);
+    if (error) setSyncError(true);
+  };
+  const openRoutineCheck = (r) => { setRoutineCheckMin(r.default_minutes || 15); setRoutineCheck(r); };
+  const uncheckRoutine = (r) => updateRoutine(r.id, { last_done_at: null });
+  const confirmRoutineCheck = () => {
+    if (!routineCheck) return;
+    const r = routineCheck;
+    if (routineCheckMin > 0) {
+      addRawEntry(r.category, r.sub, routineCheckMin, { subject: r.text, comment: "Routine", toast: `✓ ${r.text} · +${fmt(routineCheckMin)}` });
+    } else {
+      showToast(`✓ ${r.text}`);
+    }
+    updateRoutine(r.id, { last_done_at: Date.now() });
+    setRoutineCheck(null);
+  };
+  let filteredRoutines = routines;
+  if (routineCatFilter === "none") filteredRoutines = filteredRoutines.filter((r) => !r.category);
+  else if (routineCatFilter) filteredRoutines = filteredRoutines.filter((r) => r.category === routineCatFilter);
+  if (routineStatusFilter === "a_faire") filteredRoutines = filteredRoutines.filter((r) => !isRoutineDone(r));
+  else if (routineStatusFilter === "faites") filteredRoutines = filteredRoutines.filter((r) => isRoutineDone(r));
+  const routinesDueCount = routines.filter((r) => !isRoutineDone(r)).length;
 
   const untriagedCount = useMemo(() => tasks.filter((t) => !t.category && t.status !== "fait").length, [tasks]);
   const filteredTasks = useMemo(() => {
@@ -959,6 +1042,7 @@ function App() {
           <TabBtn active={tab==="saisie"} onClick={()=>setTab("saisie")}>Saisie</TabBtn>
           <TabBtn active={tab==="dashboard"} onClick={()=>setTab("dashboard")}>Tableau de bord</TabBtn>
           <TabBtn active={tab==="taches"} onClick={()=>setTab("taches")}>Tâches{untriagedCount>0?` (${untriagedCount})`:""}</TabBtn>
+          <TabBtn active={tab==="routines"} onClick={()=>setTab("routines")}>🔁 Routines{routinesDueCount>0?` (${routinesDueCount})`:""}</TabBtn>
         </div>
         <div className="app-header-gear">
           <button onClick={()=>setShowSettings(s=>!s)} style={{padding:8,borderRadius:12,border:"1px solid rgba(255,255,255,0.32)",background:"rgba(255,255,255,0.14)",color:"#fff",cursor:"pointer",fontSize:15}}>⚙️</button>
@@ -1324,6 +1408,78 @@ function App() {
         </div>
       )}
 
+      {tab === "routines" && (
+        <div style={{padding:"20px clamp(20px,4vw,56px)",maxWidth:1200,margin:"0 auto"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18,flexWrap:"wrap",gap:10}}>
+            <div>
+              <div className="disp" style={{fontSize:18,fontWeight:700}}>🔁 Routines</div>
+              <div style={{fontSize:12,color:C.muted,marginTop:2}}>Tes tâches récurrentes : coche-les une fois faites, elles reviennent toutes seules selon leur fréquence.</div>
+            </div>
+            <button onClick={()=>setRoutineEditor({})} style={{padding:"10px 18px",borderRadius:12,border:"none",background:C.abysse,color:"#FFFFFF",fontSize:14,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>
+              + Nouvelle routine
+            </button>
+          </div>
+
+          {routines.length > 0 && (
+            <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+              {[["toutes","Toutes"],["a_faire","À faire"],["faites","Faites"]].map(([k,label]) => (
+                <button key={k} onClick={()=>setRoutineStatusFilter(k)} style={{padding:"6px 12px",borderRadius:999,fontSize:12,
+                  border:`1px solid ${routineStatusFilter===k?C.abysse:C.border2}`, background:routineStatusFilter===k?`${C.abysse}15`:C.panel, color:routineStatusFilter===k?C.abysse:C.muted, cursor:"pointer"}}>{label}</button>
+              ))}
+            </div>
+          )}
+
+          {routines.length > 0 && (
+            <div style={{display:"flex",gap:6,marginBottom:22,flexWrap:"wrap"}}>
+              <button onClick={()=>setRoutineCatFilter(null)} style={{padding:"5px 10px",borderRadius:999,fontSize:11,
+                border:`1px solid ${!routineCatFilter?C.abysse:C.border2}`, background:!routineCatFilter?`${C.abysse}15`:C.panel, color:!routineCatFilter?C.abysse:C.muted, cursor:"pointer"}}>Toutes catégories</button>
+              {CATS.map((c) => (
+                <button key={c.key} onClick={()=>setRoutineCatFilter(c.key)} style={{padding:"5px 10px",borderRadius:999,fontSize:11,
+                  border:`1px solid ${routineCatFilter===c.key?c.color:C.border2}`, background:routineCatFilter===c.key?`${c.color}18`:C.panel, color:routineCatFilter===c.key?c.color:C.muted, cursor:"pointer"}}>{c.label}</button>
+              ))}
+            </div>
+          )}
+
+          {routines.length === 0 ? (
+            <div style={{textAlign:"center",padding:"50px 20px",color:C.muted}}>
+              <div style={{fontSize:40,marginBottom:10}}>🔁</div>
+              <div style={{fontSize:15,fontWeight:600,color:C.text,marginBottom:6}}>Aucune routine pour l'instant</div>
+              <div style={{fontSize:13,maxWidth:380,margin:"0 auto"}}>Ajoute tes tâches récurrentes — sauvegarde hebdo, bilan mensuel, nettoyage du poste — pour ne plus avoir à y penser.</div>
+            </div>
+          ) : (
+            <div>
+              {FREQUENCES.map((f) => {
+                const list = filteredRoutines.filter((r) => r.frequency === f.key);
+                if (list.length === 0) return null;
+                const due = list.filter((r) => !isRoutineDone(r)).length;
+                return (
+                  <div key={f.key} style={{marginBottom:22}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                      <span style={{fontSize:17}}>{f.icon}</span>
+                      <span className="disp" style={{fontSize:14,fontWeight:700,color:C.text}}>{f.label}</span>
+                      <span className="mono" style={{fontSize:11,fontWeight:600,color:due>0?C.accent:C.turquoise}}>
+                        {due>0 ? `${due} à faire` : "à jour ✓"}
+                      </span>
+                      <div style={{flex:1,borderBottom:`1px solid ${C.border}`}} />
+                    </div>
+                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                      {list.map((r) => (
+                        <RoutineRow key={r.id} routine={r} done={isRoutineDone(r)}
+                          onCheck={()=>openRoutineCheck(r)} onUncheck={()=>uncheckRoutine(r)}
+                          onEdit={()=>setRoutineEditor(r)} onDelete={()=>deleteRoutine(r.id)} />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+              {filteredRoutines.length === 0 && (
+                <div style={{color:C.muted,fontSize:13,textAlign:"center",padding:"30px 0"}}>Aucune routine ne correspond à ce filtre.</div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {timeLogTask && (
         <div style={{position:"fixed",inset:0,background:"rgba(22,48,46,.45)",display:"flex",alignItems:"center",justifyContent:"center",padding:20,zIndex:50}}>
           <div style={{background:C.panel,borderRadius:18,width:"min(420px,94vw)",overflow:"hidden"}}>
@@ -1353,6 +1509,35 @@ function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {routineCheck && (() => { const rc = catByKey(routineCheck.category); return (
+        <div style={{position:"fixed",inset:0,background:"rgba(22,48,46,.45)",display:"flex",alignItems:"center",justifyContent:"center",padding:20,zIndex:50}} onClick={()=>setRoutineCheck(null)}>
+          <div style={{background:C.panel,borderRadius:18,width:"min(420px,94vw)",overflow:"hidden"}} onClick={(e)=>e.stopPropagation()}>
+            <div style={{background:C.abysse,color:"#fff",padding:"14px 18px",fontWeight:700}}>✓ {routineCheck.text}</div>
+            <div style={{padding:18}}>
+              <div style={{fontSize:12,color:C.muted,marginBottom:8}}>Combien de temps y as-tu passé ?</div>
+              <div style={{display:"flex",gap:8,marginBottom:18,flexWrap:"wrap"}}>
+                {DURATIONS.map((m) => (
+                  <button key={m} onClick={()=>setRoutineCheckMin(m)} style={{padding:"8px 12px",borderRadius:999,fontSize:13,cursor:"pointer",
+                    border:`1px solid ${routineCheckMin===m?rc.color:C.border2}`, background:routineCheckMin===m?`${rc.color}18`:C.panel, color:routineCheckMin===m?rc.color:C.text}}>{fmt(m)}</button>
+                ))}
+                <input type="number" min="0" value={routineCheckMin} onChange={(e)=>setRoutineCheckMin(Math.max(0,parseInt(e.target.value)||0))} className="mono"
+                  style={{width:70,padding:"8px 8px",borderRadius:12,border:`1px solid ${C.border2}`,fontSize:14}} />
+              </div>
+              <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+                <button onClick={()=>setRoutineCheck(null)} style={{fontSize:12,color:C.muted,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:12,padding:"8px 12px",cursor:"pointer"}}>Annuler</button>
+                <button onClick={confirmRoutineCheck} style={{fontSize:13,fontWeight:600,color:"#fff",background:C.abysse,border:"none",borderRadius:12,padding:"8px 16px",cursor:"pointer"}}>Valider ✓</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ); })()}
+
+      {routineEditor && (
+        <RoutineEditorModal key={routineEditor.id || "new"} routine={routineEditor}
+          onCancel={()=>setRoutineEditor(null)}
+          onSave={(data)=>{ if (routineEditor.id) updateRoutine(routineEditor.id, data); else addRoutine(data); setRoutineEditor(null); }} />
       )}
 
       {drillCat && drillBreakdown && (
@@ -1775,6 +1960,101 @@ function CategoryBoard({columns,editingTaskId,onCycleStatus,onTogglePriority,onT
           </div>
         );
       })}
+    </div>
+  );
+}
+function RoutineRow({routine,done,onCheck,onUncheck,onEdit,onDelete}) {
+  const cat = routine.category ? catByKey(routine.category) : null;
+  const next = done ? nextRoutineDue(routine) : null;
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:C.panel,borderRadius:14,
+      border:`1px solid ${done?C.turquoise+"66":C.border2}`,boxShadow:"0 1px 2px rgba(22,48,46,0.06)"}}>
+      <button onClick={done?onUncheck:onCheck} title={done?"Remettre à faire":"Marquer comme fait"} style={{
+        width:28,height:28,borderRadius:999,border:`2px solid ${done?C.turquoise:(cat?cat.color:C.border2)}`,
+        background:done?C.turquoise:"transparent",display:"flex",alignItems:"center",justifyContent:"center",
+        flexShrink:0,cursor:"pointer",padding:0,transition:"all .15s ease"}}>
+        {done && <span style={{color:"#fff",fontSize:15,lineHeight:1,fontWeight:700}}>✓</span>}
+      </button>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:14,fontWeight:600,color:done?C.muted:C.text,textDecoration:done?"line-through":"none"}}>{routine.text}</div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginTop:3,flexWrap:"wrap"}}>
+          {cat && (
+            <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:cat.color}}>
+              <span style={{width:7,height:7,borderRadius:999,background:cat.color,flexShrink:0}} />{cat.label}
+            </span>
+          )}
+          <span style={{fontSize:11,color:C.muted}}>
+            {done ? `Fait le ${frDate(routine.last_done_at)} · revient le ${frDate(next.getTime())}` : `⏱ ${fmt(routine.default_minutes)} en général`}
+          </span>
+        </div>
+      </div>
+      <button onClick={onEdit} style={{background:"none",border:"none",cursor:"pointer",padding:4}} title="Modifier">✏️</button>
+      <button onClick={onDelete} style={{background:"none",border:"none",cursor:"pointer",padding:4}} title="Supprimer">🗑️</button>
+    </div>
+  );
+}
+function RoutineEditorModal({routine,onSave,onCancel}) {
+  const isEdit = !!routine.id;
+  const [text, setText] = useState(routine.text || "");
+  const [category, setCategory] = useState(routine.category || "");
+  const [sub, setSub] = useState(routine.sub || "");
+  const [frequency, setFrequency] = useState(routine.frequency || "semaine");
+  const [defaultMinutes, setDefaultMinutes] = useState(routine.default_minutes || 15);
+  const cat = category ? catByKey(category) : null;
+  const canSave = text.trim() && category && sub && frequency;
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(22,48,46,.45)",display:"flex",alignItems:"center",justifyContent:"center",padding:20,zIndex:50}} onClick={onCancel}>
+      <div style={{background:C.panel,borderRadius:18,width:"min(460px,94vw)",maxHeight:"90vh",overflowY:"auto"}} onClick={(e)=>e.stopPropagation()}>
+        <div style={{background:C.abysse,color:"#fff",padding:"14px 18px",fontWeight:700}}>{isEdit?"Modifier la routine":"🔁 Nouvelle routine"}</div>
+        <div style={{padding:18,display:"flex",flexDirection:"column",gap:14}}>
+          <div>
+            <div style={{fontSize:11,color:C.muted,marginBottom:4}}>Quoi ?</div>
+            <input autoFocus value={text} onChange={(e)=>setText(e.target.value)} placeholder="Ex. Sauvegarde hebdomadaire des tarifs"
+              style={{width:"100%",boxSizing:"border-box",background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:12,padding:"9px 10px",fontSize:14,color:C.text}} />
+          </div>
+          <div>
+            <div style={{fontSize:11,color:C.muted,marginBottom:4}}>Catégorie</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {CATS.map((c) => (
+                <button key={c.key} onClick={()=>{setCategory(c.key); setSub(c.subs[0]);}} style={{padding:"6px 10px",borderRadius:999,fontSize:12,cursor:"pointer",
+                  border:`1px solid ${category===c.key?c.color:C.border2}`, background:category===c.key?`${c.color}18`:C.panel, color:category===c.key?c.color:C.muted}}>{c.label}</button>
+              ))}
+            </div>
+          </div>
+          {cat && (
+            <div>
+              <div style={{fontSize:11,color:C.muted,marginBottom:4}}>Sous-catégorie</div>
+              <select value={sub} onChange={(e)=>setSub(e.target.value)}
+                style={{width:"100%",boxSizing:"border-box",padding:"8px 8px",borderRadius:12,border:`1px solid ${C.border2}`,fontSize:13}}>
+                {cat.subs.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          )}
+          <div>
+            <div style={{fontSize:11,color:C.muted,marginBottom:4}}>Fréquence</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {FREQUENCES.map((f) => (
+                <button key={f.key} onClick={()=>setFrequency(f.key)} style={{padding:"6px 10px",borderRadius:999,fontSize:12,cursor:"pointer",
+                  border:`1px solid ${frequency===f.key?C.abysse:C.border2}`, background:frequency===f.key?`${C.abysse}15`:C.panel, color:frequency===f.key?C.abysse:C.muted}}>{f.icon} {f.short}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:C.muted,marginBottom:4}}>Durée habituelle</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {DURATIONS.map((m) => (
+                <button key={m} onClick={()=>setDefaultMinutes(m)} style={{padding:"6px 10px",borderRadius:999,fontSize:12,cursor:"pointer",
+                  border:`1px solid ${defaultMinutes===m?C.abysse:C.border2}`, background:defaultMinutes===m?`${C.abysse}15`:C.panel, color:defaultMinutes===m?C.abysse:C.muted}}>{fmt(m)}</button>
+              ))}
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:4}}>
+            <button onClick={onCancel} style={{fontSize:12,color:C.muted,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:12,padding:"8px 14px",cursor:"pointer"}}>Annuler</button>
+            <button disabled={!canSave} onClick={()=>onSave({text,category,sub,frequency,default_minutes:defaultMinutes})}
+              style={{fontSize:13,fontWeight:600,color:"#fff",background:C.abysse,border:"none",borderRadius:12,padding:"8px 16px",cursor:canSave?"pointer":"not-allowed",opacity:canSave?1:0.45}}>{isEdit?"Enregistrer":"Créer"}</button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
