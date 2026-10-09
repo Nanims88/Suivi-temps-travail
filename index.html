@@ -360,6 +360,13 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
     .eh-grid { grid-template-columns: 1fr; gap:12px; }
     .eh-axis { display:none; }
   }
+  .routines-week { display:grid; grid-template-columns: repeat(5,1fr); gap:10px; margin-bottom:10px; }
+  @media (max-width: 900px) {
+    .routines-week { grid-template-columns: repeat(2,1fr); }
+  }
+  @media (max-width: 520px) {
+    .routines-week { grid-template-columns: 1fr; }
+  }
   .app-header { display:grid; grid-template-columns: 1fr auto 1fr; align-items:center; position:relative; overflow:hidden;
     background:
       radial-gradient(circle at 92% -30%, rgba(87,203,187,0.38), transparent 55%),
@@ -479,6 +486,13 @@ const FREQUENCES = [
   { key: "an",       label: "Annuelles",     short: "An",      icon: "🎉", addMonths: 12 },
 ];
 const freqByKey = (k) => FREQUENCES.find((f) => f.key === k) || FREQUENCES[1];
+const WEEKDAYS = [
+  { key: 0, label: "Lundi", short: "Lun" },
+  { key: 1, label: "Mardi", short: "Mar" },
+  { key: 2, label: "Mercredi", short: "Mer" },
+  { key: 3, label: "Jeudi", short: "Jeu" },
+  { key: 4, label: "Vendredi", short: "Ven" },
+];
 
 /* ======================= HELPERS ======================= */
 const pad = (n) => String(n).padStart(2, "0");
@@ -718,7 +732,8 @@ function App() {
   const addRoutine = async (data) => {
     const now = Date.now();
     const routine = { id: uid(), text: data.text.trim(), category: data.category, sub: data.sub,
-      frequency: data.frequency, default_minutes: data.default_minutes || 15, last_done_at: null,
+      frequency: data.frequency, weekday: data.frequency === "semaine" ? data.weekday : null,
+      default_minutes: data.default_minutes || 15, last_done_at: null,
       created_at: now, updated_at: now };
     setRoutines((prev) => [routine, ...prev]);
     const { error } = await sb.from("routines").insert(routine);
@@ -1446,37 +1461,74 @@ function App() {
               <div style={{fontSize:15,fontWeight:600,color:C.text,marginBottom:6}}>Aucune routine pour l'instant</div>
               <div style={{fontSize:13,maxWidth:380,margin:"0 auto"}}>Ajoute tes tâches récurrentes — sauvegarde hebdo, bilan mensuel, nettoyage du poste — pour ne plus avoir à y penser.</div>
             </div>
-          ) : (
-            <div>
-              {FREQUENCES.map((f) => {
-                const list = filteredRoutines.filter((r) => r.frequency === f.key);
-                if (list.length === 0) return null;
-                const due = list.filter((r) => !isRoutineDone(r)).length;
-                return (
-                  <div key={f.key} style={{marginBottom:22}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
-                      <span style={{fontSize:17}}>{f.icon}</span>
-                      <span className="disp" style={{fontSize:14,fontWeight:700,color:C.text}}>{f.label}</span>
-                      <span className="mono" style={{fontSize:11,fontWeight:600,color:due>0?C.accent:C.turquoise}}>
-                        {due>0 ? `${due} à faire` : "à jour ✓"}
-                      </span>
-                      <div style={{flex:1,borderBottom:`1px solid ${C.border}`}} />
-                    </div>
-                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                      {list.map((r) => (
-                        <RoutineRow key={r.id} routine={r} done={isRoutineDone(r)}
-                          onCheck={()=>openRoutineCheck(r)} onUncheck={()=>uncheckRoutine(r)}
-                          onEdit={()=>setRoutineEditor(r)} onDelete={()=>deleteRoutine(r.id)} />
-                      ))}
-                    </div>
+          ) : (() => {
+            const weekStart = startOfWeek(new Date());
+            const todayIsoNow = toISO(new Date());
+            const autresFreq = FREQUENCES.filter((f) => f.addMonths);
+            return (
+              <div>
+                <div className="routines-week">
+                  {WEEKDAYS.map((w) => {
+                    const date = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate()+w.key);
+                    const isToday = toISO(date) === todayIsoNow;
+                    const dayRoutines = filteredRoutines.filter((r) => r.frequency === "jour" || (r.frequency === "semaine" && r.weekday === w.key));
+                    return (
+                      <div key={w.key} style={{background:isToday?`${C.abysse}0d`:C.panel2,border:`1px solid ${isToday?C.abysse+"55":C.border}`,
+                        borderRadius:16,padding:10,display:"flex",flexDirection:"column",gap:7,minHeight:150}}>
+                        <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between"}}>
+                          <span className="disp" style={{fontSize:12,fontWeight:700,color:isToday?C.abysse:C.text}}>{w.short}</span>
+                          <span className="mono" style={{fontSize:10,color:isToday?C.abysse:C.muted}}>{date.toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"})}</span>
+                        </div>
+                        {dayRoutines.length === 0 ? (
+                          <div style={{fontSize:11,color:C.faint,fontStyle:"italic",textAlign:"center",padding:"14px 0",flex:1}}>Rien de prévu</div>
+                        ) : dayRoutines.map((r) => (
+                          <RoutineMiniCard key={r.id} routine={r} done={isRoutineDone(r)}
+                            onCheck={()=>openRoutineCheck(r)} onUncheck={()=>uncheckRoutine(r)}
+                            onEdit={()=>setRoutineEditor(r)} onDelete={()=>deleteRoutine(r.id)} />
+                        ))}
+                        <button onClick={()=>setRoutineEditor({frequency:"semaine",weekday:w.key})} style={{marginTop:"auto",fontSize:11,color:C.abysse,
+                          background:"transparent",border:`1px dashed ${C.border2}`,borderRadius:10,padding:"6px 8px",cursor:"pointer"}}>+ ajouter</button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {autresFreq.some((f) => filteredRoutines.some((r) => r.frequency === f.key)) && (
+                  <div style={{marginTop:24}}>
+                    <div className="disp" style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:12}}>📅 Autres routines</div>
+                    {autresFreq.map((f) => {
+                      const list = filteredRoutines.filter((r) => r.frequency === f.key);
+                      if (list.length === 0) return null;
+                      const due = list.filter((r) => !isRoutineDone(r)).length;
+                      return (
+                        <div key={f.key} style={{marginBottom:18}}>
+                          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                            <span style={{fontSize:16}}>{f.icon}</span>
+                            <span className="disp" style={{fontSize:13,fontWeight:700,color:C.text}}>{f.label}</span>
+                            <span className="mono" style={{fontSize:11,fontWeight:600,color:due>0?C.accent:C.turquoise}}>
+                              {due>0 ? `${due} à faire` : "à jour ✓"}
+                            </span>
+                            <div style={{flex:1,borderBottom:`1px solid ${C.border}`}} />
+                          </div>
+                          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                            {list.map((r) => (
+                              <RoutineRow key={r.id} routine={r} done={isRoutineDone(r)}
+                                onCheck={()=>openRoutineCheck(r)} onUncheck={()=>uncheckRoutine(r)}
+                                onEdit={()=>setRoutineEditor(r)} onDelete={()=>deleteRoutine(r.id)} />
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-              {filteredRoutines.length === 0 && (
-                <div style={{color:C.muted,fontSize:13,textAlign:"center",padding:"30px 0"}}>Aucune routine ne correspond à ce filtre.</div>
-              )}
-            </div>
-          )}
+                )}
+
+                {filteredRoutines.length === 0 && (
+                  <div style={{color:C.muted,fontSize:13,textAlign:"center",padding:"30px 0"}}>Aucune routine ne correspond à ce filtre.</div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -1993,15 +2045,45 @@ function RoutineRow({routine,done,onCheck,onUncheck,onEdit,onDelete}) {
     </div>
   );
 }
+function RoutineMiniCard({routine,done,onCheck,onUncheck,onEdit,onDelete}) {
+  const cat = routine.category ? catByKey(routine.category) : null;
+  return (
+    <div style={{background:C.panel,border:`1px solid ${done?C.turquoise+"66":C.border2}`,borderRadius:12,padding:"7px 9px",display:"flex",flexDirection:"column",gap:5}}>
+      <div style={{display:"flex",alignItems:"flex-start",gap:6}}>
+        <button onClick={done?onUncheck:onCheck} title={done?"Remettre à faire":"Marquer comme fait"} style={{
+          width:18,height:18,borderRadius:999,border:`2px solid ${done?C.turquoise:(cat?cat.color:C.border2)}`,
+          background:done?C.turquoise:"transparent",display:"flex",alignItems:"center",justifyContent:"center",
+          flexShrink:0,marginTop:1,cursor:"pointer",padding:0}}>
+          {done && <span style={{color:"#fff",fontSize:10,lineHeight:1,fontWeight:700}}>✓</span>}
+        </button>
+        <span style={{fontSize:12,fontWeight:600,color:done?C.muted:C.text,textDecoration:done?"line-through":"none",flex:1,minWidth:0,overflowWrap:"anywhere"}}>{routine.text}</span>
+      </div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingLeft:24,gap:6}}>
+        {cat ? (
+          <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10,color:cat.color,minWidth:0,overflow:"hidden"}}>
+            <span style={{width:6,height:6,borderRadius:999,background:cat.color,flexShrink:0}} />
+            <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cat.label}</span>
+          </span>
+        ) : <span />}
+        <div style={{display:"flex",gap:0,flexShrink:0}}>
+          <button onClick={onEdit} style={{background:"none",border:"none",cursor:"pointer",padding:2,fontSize:11}} title="Modifier">✏️</button>
+          <button onClick={onDelete} style={{background:"none",border:"none",cursor:"pointer",padding:2,fontSize:11}} title="Supprimer">🗑️</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 function RoutineEditorModal({routine,onSave,onCancel}) {
   const isEdit = !!routine.id;
   const [text, setText] = useState(routine.text || "");
   const [category, setCategory] = useState(routine.category || "");
   const [sub, setSub] = useState(routine.sub || "");
   const [frequency, setFrequency] = useState(routine.frequency || "semaine");
+  const [weekday, setWeekday] = useState(routine.weekday ?? Math.min(4, (new Date().getDay()+6)%7));
   const [defaultMinutes, setDefaultMinutes] = useState(routine.default_minutes || 15);
   const cat = category ? catByKey(category) : null;
-  const canSave = text.trim() && category && sub && frequency;
+  const needsWeekday = frequency === "semaine";
+  const canSave = text.trim() && category && sub && frequency && (!needsWeekday || weekday != null);
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(22,48,46,.45)",display:"flex",alignItems:"center",justifyContent:"center",padding:20,zIndex:50}} onClick={onCancel}>
       <div style={{background:C.panel,borderRadius:18,width:"min(460px,94vw)",maxHeight:"90vh",overflowY:"auto"}} onClick={(e)=>e.stopPropagation()}>
@@ -2039,6 +2121,17 @@ function RoutineEditorModal({routine,onSave,onCancel}) {
               ))}
             </div>
           </div>
+          {needsWeekday && (
+            <div>
+              <div style={{fontSize:11,color:C.muted,marginBottom:4}}>Quel jour ?</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {WEEKDAYS.map((w) => (
+                  <button key={w.key} onClick={()=>setWeekday(w.key)} style={{padding:"6px 10px",borderRadius:999,fontSize:12,cursor:"pointer",
+                    border:`1px solid ${weekday===w.key?C.abysse:C.border2}`, background:weekday===w.key?`${C.abysse}15`:C.panel, color:weekday===w.key?C.abysse:C.muted}}>{w.label}</button>
+                ))}
+              </div>
+            </div>
+          )}
           <div>
             <div style={{fontSize:11,color:C.muted,marginBottom:4}}>Durée habituelle</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
@@ -2050,7 +2143,7 @@ function RoutineEditorModal({routine,onSave,onCancel}) {
           </div>
           <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:4}}>
             <button onClick={onCancel} style={{fontSize:12,color:C.muted,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:12,padding:"8px 14px",cursor:"pointer"}}>Annuler</button>
-            <button disabled={!canSave} onClick={()=>onSave({text,category,sub,frequency,default_minutes:defaultMinutes})}
+            <button disabled={!canSave} onClick={()=>onSave({text,category,sub,frequency,weekday:needsWeekday?weekday:null,default_minutes:defaultMinutes})}
               style={{fontSize:13,fontWeight:600,color:"#fff",background:C.abysse,border:"none",borderRadius:12,padding:"8px 16px",cursor:canSave?"pointer":"not-allowed",opacity:canSave?1:0.45}}>{isEdit?"Enregistrer":"Créer"}</button>
           </div>
         </div>
