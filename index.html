@@ -520,42 +520,79 @@ const clampedDate = (year, monthIdx, day) => {
   const last = new Date(year, monthIdx+1, 0).getDate();
   return new Date(year, monthIdx, Math.min(Math.max(day,1), last));
 };
+/* ---- Jours ouvrés (fériés France) : une échéance qui tombe un we ou un jour férié
+   décale automatiquement au jour ouvré suivant. ---- */
+const easterSunday = (year) => {
+  const a = year % 19, b = Math.floor(year/100), c = year % 100;
+  const d = Math.floor(b/4), e = b % 4, f = Math.floor((b+8)/25);
+  const g = Math.floor((b-f+1)/3), h = (19*a + b - d - g + 15) % 30;
+  const i = Math.floor(c/4), k = c % 4;
+  const l = (32 + 2*e + 2*i - h - k) % 7;
+  const m = Math.floor((a + 11*h + 22*l) / 451);
+  const month = Math.floor((h + l - 7*m + 114) / 31);
+  const day = ((h + l - 7*m + 114) % 31) + 1;
+  return new Date(year, month-1, day);
+};
+const frenchHolidays = (year) => {
+  const easter = easterSunday(year);
+  const plus = (n) => { const d = new Date(easter); d.setDate(d.getDate()+n); return d; };
+  return [
+    new Date(year,0,1), plus(1), new Date(year,4,1), new Date(year,4,8),
+    plus(39), plus(50), new Date(year,6,14), new Date(year,7,15),
+    new Date(year,10,1), new Date(year,10,11), new Date(year,11,25),
+  ];
+};
+const isBusinessDay = (date) => {
+  const wd = date.getDay();
+  if (wd === 0 || wd === 6) return false;
+  return !frenchHolidays(date.getFullYear()).some((h) => toISO(h) === toISO(date));
+};
+const nextBusinessDay = (date) => {
+  if (!date) return date;
+  const d = new Date(date);
+  while (!isBusinessDay(d)) d.setDate(d.getDate()+1);
+  return d;
+};
 /* Fenêtre [dernière échéance ≤ aujourd'hui, prochaine échéance > dernière] pour une routine donnée,
    calculée depuis des repères calendaires fixes (jour de semaine / jour du mois / mois+jour),
-   jamais depuis la dernière réalisation — "tous les lundis" reste tous les lundis même si on la fait en retard. */
+   jamais depuis la dernière réalisation — "tous les lundis" reste tous les lundis même si on la fait en retard.
+   La "prochaine échéance" affichée (hors fréquence "jour") est décalée au jour ouvré suivant si elle tombe
+   un we ou un jour férié ; la date de la règle elle-même ("last") ne bouge pas, pour que faire la routine
+   le jour férié compte toujours pour le cycle en cours. */
 const routineWindow = (routine, today) => {
   const t = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   if (routine.frequency === "jour") {
     const next = new Date(t); next.setDate(next.getDate()+1);
     return { last: t, next };
   }
+  let last, next;
   if (routine.frequency === "semaine") {
     const todayWd = (t.getDay()+6)%7;
     let diff = todayWd - (routine.weekday ?? 0);
     if (diff < 0) diff += 7;
-    const last = new Date(t); last.setDate(last.getDate()-diff);
-    const next = new Date(last); next.setDate(next.getDate()+7);
-    return { last, next };
-  }
-  if (routine.frequency === "mois") {
+    last = new Date(t); last.setDate(last.getDate()-diff);
+    next = new Date(last); next.setDate(next.getDate()+7);
+  } else if (routine.frequency === "mois") {
     const day = routine.monthday || 1;
-    let last = clampedDate(t.getFullYear(), t.getMonth(), day);
+    last = clampedDate(t.getFullYear(), t.getMonth(), day);
     if (last > t) last = clampedDate(t.getFullYear(), t.getMonth()-1, day);
-    const next = clampedDate(last.getFullYear(), last.getMonth()+1, day);
-    return { last, next };
+    next = clampedDate(last.getFullYear(), last.getMonth()+1, day);
+  } else {
+    // semestre / an : une ou deux dates fixes (mois+jour) par an
+    const day = routine.monthday || 1;
+    const anchorMonth = (routine.month || 1) - 1;
+    const months = routine.frequency === "semestre" ? [anchorMonth, (anchorMonth+6)%12] : [anchorMonth];
+    const candidates = [];
+    for (let yOff = -1; yOff <= 1; yOff++) {
+      months.forEach((m) => candidates.push(clampedDate(t.getFullYear()+yOff, m, day)));
+    }
+    candidates.sort((a,b) => a-b);
+    last = candidates[0];
+    for (const c of candidates) { if (c <= t) last = c; else { next = c; break; } }
   }
-  // semestre / an : une ou deux dates fixes (mois+jour) par an
-  const day = routine.monthday || 1;
-  const anchorMonth = (routine.month || 1) - 1;
-  const months = routine.frequency === "semestre" ? [anchorMonth, (anchorMonth+6)%12] : [anchorMonth];
-  const candidates = [];
-  for (let yOff = -1; yOff <= 1; yOff++) {
-    months.forEach((m) => candidates.push(clampedDate(t.getFullYear()+yOff, m, day)));
-  }
-  candidates.sort((a,b) => a-b);
-  let last = candidates[0], next = null;
-  for (const c of candidates) { if (c <= t) last = c; else { next = c; break; } }
-  return { last, next };
+  // "last" reste la vraie date de la règle : faire la routine un we/férié compte quand même pour le cycle en cours.
+  // Seule "next" (ce qu'on affiche comme prochaine échéance) est décalée au jour ouvré suivant.
+  return { last, next: nextBusinessDay(next) };
 };
 const nextRoutineDue = (routine) => routineWindow(routine, new Date()).next;
 const isRoutineDone = (routine) => {
