@@ -516,21 +516,52 @@ const startOfWeek = (date) => { const d=new Date(date); const day=(d.getDay()+6)
 const endOfWeek = (date) => { const s=startOfWeek(date); const e=new Date(s); e.setDate(s.getDate()+6); return e; };
 const startOfMonth = (date) => new Date(date.getFullYear(), date.getMonth(), 1);
 const endOfMonth = (date) => new Date(date.getFullYear(), date.getMonth()+1, 0);
-const addMonthsClamped = (d, n) => {
-  const day = d.getDate();
-  const r = new Date(d.getFullYear(), d.getMonth()+n, 1);
-  r.setDate(Math.min(day, endOfMonth(r).getDate()));
-  return r;
+const clampedDate = (year, monthIdx, day) => {
+  const last = new Date(year, monthIdx+1, 0).getDate();
+  return new Date(year, monthIdx, Math.min(Math.max(day,1), last));
 };
-const nextRoutineDue = (routine) => {
-  if (!routine.last_done_at) return null;
-  const f = freqByKey(routine.frequency);
-  const last = new Date(routine.last_done_at);
-  return f.addMonths ? addMonthsClamped(last, f.addMonths) : (() => { const r = new Date(last); r.setDate(r.getDate()+f.addDays); return r; })();
+/* Fenêtre [dernière échéance ≤ aujourd'hui, prochaine échéance > dernière] pour une routine donnée,
+   calculée depuis des repères calendaires fixes (jour de semaine / jour du mois / mois+jour),
+   jamais depuis la dernière réalisation — "tous les lundis" reste tous les lundis même si on la fait en retard. */
+const routineWindow = (routine, today) => {
+  const t = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  if (routine.frequency === "jour") {
+    const next = new Date(t); next.setDate(next.getDate()+1);
+    return { last: t, next };
+  }
+  if (routine.frequency === "semaine") {
+    const todayWd = (t.getDay()+6)%7;
+    let diff = todayWd - (routine.weekday ?? 0);
+    if (diff < 0) diff += 7;
+    const last = new Date(t); last.setDate(last.getDate()-diff);
+    const next = new Date(last); next.setDate(next.getDate()+7);
+    return { last, next };
+  }
+  if (routine.frequency === "mois") {
+    const day = routine.monthday || 1;
+    let last = clampedDate(t.getFullYear(), t.getMonth(), day);
+    if (last > t) last = clampedDate(t.getFullYear(), t.getMonth()-1, day);
+    const next = clampedDate(last.getFullYear(), last.getMonth()+1, day);
+    return { last, next };
+  }
+  // semestre / an : une ou deux dates fixes (mois+jour) par an
+  const day = routine.monthday || 1;
+  const anchorMonth = (routine.month || 1) - 1;
+  const months = routine.frequency === "semestre" ? [anchorMonth, (anchorMonth+6)%12] : [anchorMonth];
+  const candidates = [];
+  for (let yOff = -1; yOff <= 1; yOff++) {
+    months.forEach((m) => candidates.push(clampedDate(t.getFullYear()+yOff, m, day)));
+  }
+  candidates.sort((a,b) => a-b);
+  let last = candidates[0], next = null;
+  for (const c of candidates) { if (c <= t) last = c; else { next = c; break; } }
+  return { last, next };
 };
+const nextRoutineDue = (routine) => routineWindow(routine, new Date()).next;
 const isRoutineDone = (routine) => {
-  const next = nextRoutineDue(routine);
-  return !!next && toISO(new Date()) < toISO(next);
+  if (!routine.last_done_at) return false;
+  const { last } = routineWindow(routine, new Date());
+  return toISO(new Date(routine.last_done_at)) >= toISO(last);
 };
 const frDate = (ts) => new Date(ts).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
 const fmtDayLabel = (d) => d.toLocaleDateString("fr-FR", { weekday: "short" });
@@ -539,6 +570,13 @@ const startOfYear = (date) => new Date(date.getFullYear(), 0, 1);
 const endOfYear = (date) => new Date(date.getFullYear(), 11, 31);
 const getWeeksInYear = (date) => { const s = startOfYear(date), e = endOfYear(date); return (Math.round((e-s)/86400000)+1)/7; };
 const MONTH_LABELS = ["Jan","Fév","Mar","Avr","Mai","Juin","Juil","Août","Sep","Oct","Nov","Déc"];
+const routineAnchorLabel = (routine) => {
+  if (routine.frequency === "semaine") { const w = WEEKDAYS.find((w) => w.key === routine.weekday); return w ? `Tous les ${w.label.toLowerCase()}s` : ""; }
+  if (routine.frequency === "mois") return `Le ${routine.monthday} de chaque mois`;
+  if (routine.frequency === "semestre") return `Le ${routine.monthday} ${MONTH_LABELS[(routine.month||1)-1]} et ${MONTH_LABELS[((routine.month||1)-1+6)%12]}`;
+  if (routine.frequency === "an") return `Le ${routine.monthday} ${MONTH_LABELS[(routine.month||1)-1]}`;
+  return "";
+};
 
 // Bornes [début, fin] de la période contenant `date`, selon la granularité choisie.
 const rangeFor = (period, date) => {
@@ -732,7 +770,10 @@ function App() {
   const addRoutine = async (data) => {
     const now = Date.now();
     const routine = { id: uid(), text: data.text.trim(), category: data.category, sub: data.sub,
-      frequency: data.frequency, weekday: data.frequency === "semaine" ? data.weekday : null,
+      frequency: data.frequency,
+      weekday: data.frequency === "semaine" ? data.weekday : null,
+      monthday: ["mois","semestre","an"].includes(data.frequency) ? data.monthday : null,
+      month: ["semestre","an"].includes(data.frequency) ? data.month : null,
       default_minutes: data.default_minutes || 15, last_done_at: null,
       created_at: now, updated_at: now };
     setRoutines((prev) => [routine, ...prev]);
@@ -2036,7 +2077,7 @@ function RoutineRow({routine,done,onCheck,onUncheck,onEdit,onDelete}) {
             </span>
           )}
           <span style={{fontSize:11,color:C.muted}}>
-            {done ? `Fait le ${frDate(routine.last_done_at)} · revient le ${frDate(next.getTime())}` : `⏱ ${fmt(routine.default_minutes)} en général`}
+            {done ? `Fait le ${frDate(routine.last_done_at)} · revient le ${frDate(next.getTime())}` : `${routineAnchorLabel(routine)} · ⏱ ${fmt(routine.default_minutes)}`}
           </span>
         </div>
       </div>
@@ -2080,10 +2121,17 @@ function RoutineEditorModal({routine,onSave,onCancel}) {
   const [sub, setSub] = useState(routine.sub || "");
   const [frequency, setFrequency] = useState(routine.frequency || "semaine");
   const [weekday, setWeekday] = useState(routine.weekday ?? Math.min(4, (new Date().getDay()+6)%7));
+  const [monthday, setMonthday] = useState(routine.monthday || new Date().getDate());
+  const [month, setMonth] = useState(routine.month || (new Date().getMonth()+1));
   const [defaultMinutes, setDefaultMinutes] = useState(routine.default_minutes || 15);
   const cat = category ? catByKey(category) : null;
   const needsWeekday = frequency === "semaine";
-  const canSave = text.trim() && category && sub && frequency && (!needsWeekday || weekday != null);
+  const needsMonthday = frequency === "mois" || frequency === "semestre" || frequency === "an";
+  const needsMonth = frequency === "semestre" || frequency === "an";
+  const canSave = text.trim() && category && sub && frequency
+    && (!needsWeekday || weekday != null)
+    && (!needsMonthday || (monthday >= 1 && monthday <= 31))
+    && (!needsMonth || (month >= 1 && month <= 12));
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(22,48,46,.45)",display:"flex",alignItems:"center",justifyContent:"center",padding:20,zIndex:50}} onClick={onCancel}>
       <div style={{background:C.panel,borderRadius:18,width:"min(460px,94vw)",maxHeight:"90vh",overflowY:"auto"}} onClick={(e)=>e.stopPropagation()}>
@@ -2132,6 +2180,26 @@ function RoutineEditorModal({routine,onSave,onCancel}) {
               </div>
             </div>
           )}
+          {needsMonthday && (
+            <div>
+              <div style={{fontSize:11,color:C.muted,marginBottom:4}}>{needsMonth ? "Quel jour, quel mois ?" : "Quel jour du mois ?"}</div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <select value={monthday} onChange={(e)=>setMonthday(Number(e.target.value))}
+                  style={{padding:"8px 8px",borderRadius:12,border:`1px solid ${C.border2}`,fontSize:13}}>
+                  {Array.from({length:31},(_,i)=>i+1).map((d) => <option key={d} value={d}>Le {d}</option>)}
+                </select>
+                {needsMonth && (
+                  <select value={month} onChange={(e)=>setMonth(Number(e.target.value))}
+                    style={{padding:"8px 8px",borderRadius:12,border:`1px solid ${C.border2}`,fontSize:13}}>
+                    {MONTH_LABELS.map((lbl,i) => <option key={i} value={i+1}>{lbl}</option>)}
+                  </select>
+                )}
+                {frequency === "semestre" && (
+                  <span style={{alignSelf:"center",fontSize:11,color:C.muted}}>+ {MONTH_LABELS[(month-1+6)%12]} (6 mois après)</span>
+                )}
+              </div>
+            </div>
+          )}
           <div>
             <div style={{fontSize:11,color:C.muted,marginBottom:4}}>Durée habituelle</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
@@ -2143,7 +2211,9 @@ function RoutineEditorModal({routine,onSave,onCancel}) {
           </div>
           <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:4}}>
             <button onClick={onCancel} style={{fontSize:12,color:C.muted,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:12,padding:"8px 14px",cursor:"pointer"}}>Annuler</button>
-            <button disabled={!canSave} onClick={()=>onSave({text,category,sub,frequency,weekday:needsWeekday?weekday:null,default_minutes:defaultMinutes})}
+            <button disabled={!canSave} onClick={()=>onSave({text,category,sub,frequency,
+              weekday:needsWeekday?weekday:null, monthday:needsMonthday?monthday:null, month:needsMonth?month:null,
+              default_minutes:defaultMinutes})}
               style={{fontSize:13,fontWeight:600,color:"#fff",background:C.abysse,border:"none",borderRadius:12,padding:"8px 16px",cursor:canSave?"pointer":"not-allowed",opacity:canSave?1:0.45}}>{isEdit?"Enregistrer":"Créer"}</button>
           </div>
         </div>
