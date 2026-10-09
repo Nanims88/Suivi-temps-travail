@@ -2121,17 +2121,23 @@ function RoutineEditorModal({routine,onSave,onCancel}) {
   const [sub, setSub] = useState(routine.sub || "");
   const [frequency, setFrequency] = useState(routine.frequency || "semaine");
   const [weekday, setWeekday] = useState(routine.weekday ?? Math.min(4, (new Date().getDay()+6)%7));
-  const [monthday, setMonthday] = useState(routine.monthday || new Date().getDate());
-  const [month, setMonth] = useState(routine.month || (new Date().getMonth()+1));
+  const [anchorDate, setAnchorDate] = useState(() => {
+    if (routine.monthday) {
+      const y = new Date().getFullYear();
+      const m = (routine.frequency === "semestre" || routine.frequency === "an") ? (routine.month||1)-1 : new Date().getMonth();
+      return toISO(clampedDate(y, m, routine.monthday));
+    }
+    return toISO(new Date());
+  });
   const [defaultMinutes, setDefaultMinutes] = useState(routine.default_minutes || 15);
   const cat = category ? catByKey(category) : null;
   const needsWeekday = frequency === "semaine";
   const needsMonthday = frequency === "mois" || frequency === "semestre" || frequency === "an";
   const needsMonth = frequency === "semestre" || frequency === "an";
+  const anchor = anchorDate ? parseISO(anchorDate) : null;
   const canSave = text.trim() && category && sub && frequency
     && (!needsWeekday || weekday != null)
-    && (!needsMonthday || (monthday >= 1 && monthday <= 31))
-    && (!needsMonth || (month >= 1 && month <= 12));
+    && (!needsMonthday || !!anchor);
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(22,48,46,.45)",display:"flex",alignItems:"center",justifyContent:"center",padding:20,zIndex:50}} onClick={onCancel}>
       <div style={{background:C.panel,borderRadius:18,width:"min(460px,94vw)",maxHeight:"90vh",overflowY:"auto"}} onClick={(e)=>e.stopPropagation()}>
@@ -2182,21 +2188,13 @@ function RoutineEditorModal({routine,onSave,onCancel}) {
           )}
           {needsMonthday && (
             <div>
-              <div style={{fontSize:11,color:C.muted,marginBottom:4}}>{needsMonth ? "Quel jour, quel mois ?" : "Quel jour du mois ?"}</div>
-              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                <select value={monthday} onChange={(e)=>setMonthday(Number(e.target.value))}
-                  style={{padding:"8px 8px",borderRadius:12,border:`1px solid ${C.border2}`,fontSize:13}}>
-                  {Array.from({length:31},(_,i)=>i+1).map((d) => <option key={d} value={d}>Le {d}</option>)}
-                </select>
-                {needsMonth && (
-                  <select value={month} onChange={(e)=>setMonth(Number(e.target.value))}
-                    style={{padding:"8px 8px",borderRadius:12,border:`1px solid ${C.border2}`,fontSize:13}}>
-                    {MONTH_LABELS.map((lbl,i) => <option key={i} value={i+1}>{lbl}</option>)}
-                  </select>
-                )}
-                {frequency === "semestre" && (
-                  <span style={{alignSelf:"center",fontSize:11,color:C.muted}}>+ {MONTH_LABELS[(month-1+6)%12]} (6 mois après)</span>
-                )}
+              <div style={{fontSize:11,color:C.muted,marginBottom:4}}>Quelle date ?</div>
+              <input type="date" value={anchorDate} onChange={(e)=>setAnchorDate(e.target.value)}
+                style={{padding:"8px 8px",borderRadius:12,border:`1px solid ${C.border2}`,fontSize:13,color:C.text}} />
+              <div style={{fontSize:11,color:C.muted,marginTop:6}}>
+                {frequency === "mois" && anchor && `Se répète chaque mois, le ${anchor.getDate()}.`}
+                {frequency === "an" && anchor && `Se répète chaque année, le ${anchor.getDate()} ${MONTH_LABELS[anchor.getMonth()]}.`}
+                {frequency === "semestre" && anchor && `Se répète tous les 6 mois : le ${anchor.getDate()} ${MONTH_LABELS[anchor.getMonth()]} et le ${anchor.getDate()} ${MONTH_LABELS[(anchor.getMonth()+6)%12]}.`}
               </div>
             </div>
           )}
@@ -2212,7 +2210,7 @@ function RoutineEditorModal({routine,onSave,onCancel}) {
           <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:4}}>
             <button onClick={onCancel} style={{fontSize:12,color:C.muted,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:12,padding:"8px 14px",cursor:"pointer"}}>Annuler</button>
             <button disabled={!canSave} onClick={()=>onSave({text,category,sub,frequency,
-              weekday:needsWeekday?weekday:null, monthday:needsMonthday?monthday:null, month:needsMonth?month:null,
+              weekday:needsWeekday?weekday:null, monthday:needsMonthday&&anchor?anchor.getDate():null, month:needsMonth&&anchor?anchor.getMonth()+1:null,
               default_minutes:defaultMinutes})}
               style={{fontSize:13,fontWeight:600,color:"#fff",background:C.abysse,border:"none",borderRadius:12,padding:"8px 16px",cursor:canSave?"pointer":"not-allowed",opacity:canSave?1:0.45}}>{isEdit?"Enregistrer":"Créer"}</button>
           </div>
