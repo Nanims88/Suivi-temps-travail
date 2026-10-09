@@ -1552,7 +1552,7 @@ function App() {
                   {orderedWeekdays.map((w) => {
                     const date = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate()+w.key);
                     const isToday = toISO(date) === todayIsoNow;
-                    const dayRoutines = filteredRoutines.filter((r) => r.frequency === "jour" || (r.frequency === "semaine" && r.weekday === w.key));
+                    const dayRoutines = filteredRoutines.filter((r) => (r.frequency === "jour" && isToday) || (r.frequency === "semaine" && r.weekday === w.key));
                     return (
                       <div key={w.key} style={{background:isToday?`${C.abysse}0d`:C.panel2,border:`1px solid ${isToday?C.abysse+"55":C.border}`,
                         borderRadius:16,padding:10,display:"flex",flexDirection:"column",gap:7,minHeight:150}}>
