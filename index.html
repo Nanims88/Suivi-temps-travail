@@ -1540,11 +1540,13 @@ function App() {
               <div style={{fontSize:13,maxWidth:380,margin:"0 auto"}}>Ajoute tes tâches récurrentes — sauvegarde hebdo, bilan mensuel, nettoyage du poste — pour ne plus avoir à y penser.</div>
             </div>
           ) : (() => {
-            const weekStart = startOfWeek(new Date());
+            const todayIso7 = (new Date().getDay()+6)%7; // 0=Lun..6=Dim
+            const isWeekend = todayIso7 > 4;
+            let weekStart = startOfWeek(new Date());
+            if (isWeekend) weekStart = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate()+7); // we → semaine à venir
             const todayIsoNow = toISO(new Date());
             const autresFreq = FREQUENCES.filter((f) => f.addMonths);
-            const todayIso7 = (new Date().getDay()+6)%7;
-            const todayStart = todayIso7 > 4 ? 0 : todayIso7;
+            const todayStart = isWeekend ? 0 : todayIso7;
             const orderedWeekdays = [...WEEKDAYS.slice(todayStart), ...WEEKDAYS.slice(0, todayStart)];
             return (
               <div>
