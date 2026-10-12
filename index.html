@@ -837,7 +837,7 @@ function App() {
     if (error) setSyncError(true);
   };
   const deleteRoutine = async (id) => {
-    setRoutines((prev) => prev.filter((r) => r.id !== id));
+    setRoutines((prev) => prev.filter((r) => r.id !== id && r.parent_id !== id));
     const { error } = await sb.from("routines").delete().eq("id", id);
     if (error) setSyncError(true);
   };
@@ -854,12 +854,37 @@ function App() {
     updateRoutine(r.id, { last_done_at: Date.now() });
     setRoutineCheck(null);
   };
-  let filteredRoutines = routines;
+
+  /* -------- Sous-tâches de routine : suivent le cycle de la routine parente, pas de temps propre -------- */
+  const routineSubtasksByParent = useMemo(() => {
+    const m = new Map();
+    routines.forEach((r) => { if (r.parent_id) { if (!m.has(r.parent_id)) m.set(r.parent_id, []); m.get(r.parent_id).push(r); } });
+    m.forEach((list) => list.sort((a,b) => a.created_at - b.created_at));
+    return m;
+  }, [routines]);
+  const addRoutineSubtask = async (parentId, text) => {
+    const clean = text.trim();
+    if (!clean) return;
+    const now = Date.now();
+    const sub = { id: uid(), text: clean, category: null, sub: null, frequency: "jour",
+      weekday: null, monthday: null, month: null, default_minutes: 0, last_done_at: null,
+      parent_id: parentId, created_at: now, updated_at: now };
+    setRoutines((prev) => [sub, ...prev]);
+    const { error } = await sb.from("routines").insert(sub);
+    if (error) { console.error(error); setSyncError(true); }
+  };
+  const isRoutineSubtaskDone = (subtask, parent) => isRoutineDone({ ...subtask, frequency: parent.frequency, weekday: parent.weekday, monthday: parent.monthday, month: parent.month });
+  const toggleRoutineSubtask = (subtask, parent) => {
+    const done = isRoutineSubtaskDone(subtask, parent);
+    updateRoutine(subtask.id, { last_done_at: done ? null : Date.now() });
+  };
+
+  let filteredRoutines = routines.filter((r) => !r.parent_id);
   if (routineCatFilter === "none") filteredRoutines = filteredRoutines.filter((r) => !r.category);
   else if (routineCatFilter) filteredRoutines = filteredRoutines.filter((r) => r.category === routineCatFilter);
   if (routineStatusFilter === "a_faire") filteredRoutines = filteredRoutines.filter((r) => !isRoutineDone(r));
   else if (routineStatusFilter === "faites") filteredRoutines = filteredRoutines.filter((r) => isRoutineDone(r));
-  const routinesDueCount = routines.filter((r) => !isRoutineDone(r)).length;
+  const routinesDueCount = routines.filter((r) => !r.parent_id && !isRoutineDone(r)).length;
 
   const subtasksByParent = useMemo(() => {
     const m = new Map();
@@ -1586,8 +1611,11 @@ function App() {
                           const interactive = r.frequency !== "jour" || isToday;
                           return (
                             <RoutineMiniCard key={r.id} routine={r} done={interactive && isRoutineDone(r)} interactive={interactive}
+                              subtasks={routineSubtasksByParent.get(r.id)} isSubDone={(st)=>isRoutineSubtaskDone(st,r)}
                               onCheck={()=>openRoutineCheck(r)} onUncheck={()=>uncheckRoutine(r)}
-                              onEdit={()=>setRoutineEditor(r)} onDelete={()=>deleteRoutine(r.id)} />
+                              onEdit={()=>setRoutineEditor(r)} onDelete={()=>deleteRoutine(r.id)}
+                              onAddSubtask={(text)=>addRoutineSubtask(r.id,text)} onToggleSubtask={(st)=>toggleRoutineSubtask(st,r)}
+                              onDeleteSubtask={deleteRoutine} onSaveSubtask={(st,text)=>updateRoutine(st.id,{text})} />
                           );
                         })}
                         <button onClick={()=>setRoutineEditor({frequency:"semaine",weekday:w.key})} style={{marginTop:"auto",fontSize:11,color:C.abysse,
@@ -1617,8 +1645,11 @@ function App() {
                           <div style={{display:"flex",flexDirection:"column",gap:8}}>
                             {list.map((r) => (
                               <RoutineRow key={r.id} routine={r} done={isRoutineDone(r)}
+                                subtasks={routineSubtasksByParent.get(r.id)} isSubDone={(st)=>isRoutineSubtaskDone(st,r)}
                                 onCheck={()=>openRoutineCheck(r)} onUncheck={()=>uncheckRoutine(r)}
-                                onEdit={()=>setRoutineEditor(r)} onDelete={()=>deleteRoutine(r.id)} />
+                                onEdit={()=>setRoutineEditor(r)} onDelete={()=>deleteRoutine(r.id)}
+                                onAddSubtask={(text)=>addRoutineSubtask(r.id,text)} onToggleSubtask={(st)=>toggleRoutineSubtask(st,r)}
+                                onDeleteSubtask={deleteRoutine} onSaveSubtask={(st,text)=>updateRoutine(st.id,{text})} />
                             ))}
                           </div>
                         </div>
@@ -2170,38 +2201,65 @@ function CategoryBoard({columns,editingTaskId,onCycleStatus,onTogglePriority,onT
     </div>
   );
 }
-function RoutineRow({routine,done,onCheck,onUncheck,onEdit,onDelete}) {
+function RoutineRow({routine,done,subtasks,isSubDone,onCheck,onUncheck,onEdit,onDelete,onAddSubtask,onToggleSubtask,onDeleteSubtask,onSaveSubtask}) {
   const cat = routine.category ? catByKey(routine.category) : null;
   const next = done ? nextRoutineDue(routine) : null;
+  const subs = subtasks || [];
+  const [expanded, setExpanded] = useState(false);
+  const [newSubtask, setNewSubtask] = useState("");
+  const doneCount = subs.filter((st) => isSubDone(st)).length;
+  const submitSubtask = () => { const v = newSubtask.trim(); if (!v) return; onAddSubtask(v); setNewSubtask(""); };
   return (
-    <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:C.panel,borderRadius:14,
-      border:`1px solid ${done?C.turquoise+"66":C.border2}`,boxShadow:"0 1px 2px rgba(22,48,46,0.06)"}}>
-      <button onClick={done?onUncheck:onCheck} title={done?"Remettre à faire":"Marquer comme fait"} style={{
-        width:28,height:28,borderRadius:999,border:`2px solid ${done?C.turquoise:(cat?cat.color:C.border2)}`,
-        background:done?C.turquoise:"transparent",display:"flex",alignItems:"center",justifyContent:"center",
-        flexShrink:0,cursor:"pointer",padding:0,transition:"all .15s ease"}}>
-        {done && <span style={{color:"#fff",fontSize:15,lineHeight:1,fontWeight:700}}>✓</span>}
-      </button>
-      <div style={{flex:1,minWidth:0}}>
-        <div style={{fontSize:14,fontWeight:600,color:done?C.muted:C.text,textDecoration:done?"line-through":"none"}}>{routine.text}</div>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginTop:3,flexWrap:"wrap"}}>
-          {cat && (
-            <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:cat.color}}>
-              <span style={{width:7,height:7,borderRadius:999,background:cat.color,flexShrink:0}} />{cat.label}
+    <div style={{background:C.panel,borderRadius:14,border:`1px solid ${done?C.turquoise+"66":C.border2}`,boxShadow:"0 1px 2px rgba(22,48,46,0.06)"}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px"}}>
+        <button onClick={done?onUncheck:onCheck} title={done?"Remettre à faire":"Marquer comme fait"} style={{
+          width:28,height:28,borderRadius:999,border:`2px solid ${done?C.turquoise:(cat?cat.color:C.border2)}`,
+          background:done?C.turquoise:"transparent",display:"flex",alignItems:"center",justifyContent:"center",
+          flexShrink:0,cursor:"pointer",padding:0,transition:"all .15s ease"}}>
+          {done && <span style={{color:"#fff",fontSize:15,lineHeight:1,fontWeight:700}}>✓</span>}
+        </button>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:14,fontWeight:600,color:done?C.muted:C.text,textDecoration:done?"line-through":"none"}}>{routine.text}</div>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginTop:3,flexWrap:"wrap"}}>
+            {cat && (
+              <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:cat.color}}>
+                <span style={{width:7,height:7,borderRadius:999,background:cat.color,flexShrink:0}} />{cat.label}
+              </span>
+            )}
+            <span style={{fontSize:11,color:C.muted}}>
+              {done ? `Fait le ${frDate(routine.last_done_at)} · revient le ${frDate(next.getTime())}` : `${routineAnchorLabel(routine)} · ⏱ ${fmt(routine.default_minutes)}`}
             </span>
-          )}
-          <span style={{fontSize:11,color:C.muted}}>
-            {done ? `Fait le ${frDate(routine.last_done_at)} · revient le ${frDate(next.getTime())}` : `${routineAnchorLabel(routine)} · ⏱ ${fmt(routine.default_minutes)}`}
-          </span>
+          </div>
         </div>
+        <button onClick={()=>setExpanded((e)=>!e)} title="Sous-tâches" style={{background:"none",border:"none",cursor:"pointer",
+          fontSize:11,color:subs.length?C.muted:C.faint,display:"flex",alignItems:"center",gap:3,flexShrink:0,padding:"2px 4px"}}>
+          <span>{expanded?"▾":"▸"}</span>
+          {subs.length>0 ? <span className="mono">{doneCount}/{subs.length}</span> : <span>+ sous-tâche</span>}
+        </button>
+        <button onClick={onEdit} style={{background:"none",border:"none",cursor:"pointer",padding:4}} title="Modifier">✏️</button>
+        <button onClick={onDelete} style={{background:"none",border:"none",cursor:"pointer",padding:4}} title="Supprimer">🗑️</button>
       </div>
-      <button onClick={onEdit} style={{background:"none",border:"none",cursor:"pointer",padding:4}} title="Modifier">✏️</button>
-      <button onClick={onDelete} style={{background:"none",border:"none",cursor:"pointer",padding:4}} title="Supprimer">🗑️</button>
+      {expanded && (
+        <div style={{padding:"0 14px 10px 54px",display:"flex",flexDirection:"column",gap:6,borderTop:`1px solid ${C.border}`,marginTop:-1,paddingTop:8}}>
+          {subs.map((st) => (
+            <RoutineSubtaskRow key={st.id} subtask={st} done={isSubDone(st)} onToggle={()=>onToggleSubtask(st)} onDelete={()=>onDeleteSubtask(st.id)} onSave={(text)=>onSaveSubtask(st,text)} />
+          ))}
+          <input value={newSubtask} onChange={(e)=>setNewSubtask(e.target.value)}
+            onKeyDown={(e)=>{if(e.key==="Enter") submitSubtask();}}
+            placeholder="+ ajouter une sous-tâche…"
+            style={{fontSize:12,background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:8,padding:"5px 8px",color:C.text}} />
+        </div>
+      )}
     </div>
   );
 }
-function RoutineMiniCard({routine,done,interactive=true,onCheck,onUncheck,onEdit,onDelete}) {
+function RoutineMiniCard({routine,done,interactive=true,subtasks,isSubDone,onCheck,onUncheck,onEdit,onDelete,onAddSubtask,onToggleSubtask,onDeleteSubtask,onSaveSubtask}) {
   const cat = routine.category ? catByKey(routine.category) : null;
+  const subs = subtasks || [];
+  const [expanded, setExpanded] = useState(false);
+  const [newSubtask, setNewSubtask] = useState("");
+  const doneCount = subs.filter((st) => isSubDone(st)).length;
+  const submitSubtask = () => { const v = newSubtask.trim(); if (!v) return; onAddSubtask(v); setNewSubtask(""); };
   return (
     <div style={{background:C.panel,border:`1px solid ${done?C.turquoise+"66":C.border2}`,borderRadius:12,padding:"7px 9px",
       display:"flex",flexDirection:"column",gap:5,opacity:interactive?1:0.6}}>
@@ -2214,6 +2272,11 @@ function RoutineMiniCard({routine,done,interactive=true,onCheck,onUncheck,onEdit
           {done && <span style={{color:"#fff",fontSize:10,lineHeight:1,fontWeight:700}}>✓</span>}
         </button>
         <span style={{fontSize:12,fontWeight:600,color:done?C.muted:C.text,textDecoration:done?"line-through":"none",flex:1,minWidth:0,overflowWrap:"anywhere"}}>{routine.text}</span>
+        <button onClick={()=>setExpanded((e)=>!e)} title="Sous-tâches" style={{background:"none",border:"none",
+          cursor:"pointer",fontSize:9,color:subs.length?C.muted:C.faint,display:"flex",alignItems:"center",gap:2,flexShrink:0,padding:1}}>
+          <span>{expanded?"▾":"▸"}</span>
+          {subs.length>0 && <span className="mono">{doneCount}/{subs.length}</span>}
+        </button>
       </div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingLeft:24,gap:6}}>
         {cat ? (
@@ -2227,6 +2290,44 @@ function RoutineMiniCard({routine,done,interactive=true,onCheck,onUncheck,onEdit
           <button onClick={onDelete} style={{background:"none",border:"none",cursor:"pointer",padding:2,fontSize:11}} title="Supprimer">🗑️</button>
         </div>
       </div>
+      {expanded && (
+        <div style={{display:"flex",flexDirection:"column",gap:4,paddingLeft:24,borderTop:`1px solid ${C.border}`,paddingTop:5,marginTop:2}}>
+          {subs.map((st) => (
+            <RoutineSubtaskRow key={st.id} subtask={st} done={isSubDone(st)} interactive={interactive} small
+              onToggle={()=>onToggleSubtask(st)} onDelete={()=>onDeleteSubtask(st.id)} onSave={(text)=>onSaveSubtask(st,text)} />
+          ))}
+          {interactive && (
+            <input value={newSubtask} onChange={(e)=>setNewSubtask(e.target.value)}
+              onKeyDown={(e)=>{if(e.key==="Enter") submitSubtask();}}
+              placeholder="+ sous-tâche…"
+              style={{fontSize:10,background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:6,padding:"3px 6px",color:C.text}} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+function RoutineSubtaskRow({subtask,done,interactive=true,small,onToggle,onDelete,onSave}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(subtask.text);
+  const box = small ? 14 : 16, font = small ? 11 : 13, check = small ? 8 : 9;
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:small?6:8}}>
+      <button onClick={interactive?onToggle:undefined} title={!interactive?"Dépend de la routine parente":done?"Remettre à faire":"Marquer comme fait"} style={{
+        width:box,height:box,borderRadius:999,border:`2px solid ${done?C.turquoise:C.border2}`,background:done?C.turquoise:"transparent",
+        display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:interactive?"pointer":"default",padding:0}}>
+        {done && <span style={{color:"#fff",fontSize:check,lineHeight:1,fontWeight:700}}>✓</span>}
+      </button>
+      {editing ? (
+        <input autoFocus value={draft} onChange={(e)=>setDraft(e.target.value)}
+          onKeyDown={(e)=>{if(e.key==="Enter"){onSave(draft);setEditing(false);} if(e.key==="Escape") setEditing(false);}}
+          onBlur={()=>{onSave(draft);setEditing(false);}}
+          style={{flex:1,minWidth:0,fontSize:font,background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:8,padding:"2px 6px",color:C.text}} />
+      ) : (
+        <span onClick={interactive?(()=>setEditing(true)):undefined} style={{flex:1,minWidth:0,fontSize:font,cursor:interactive?"text":"default",
+          textDecoration:done?"line-through":"none",color:done?C.muted:C.text,overflowWrap:"anywhere"}}>{subtask.text}</span>
+      )}
+      {interactive && <button onClick={onDelete} style={{background:"none",border:"none",cursor:"pointer",padding:2,fontSize:small?9:10,flexShrink:0}} title="Supprimer">🗑️</button>}
     </div>
   );
 }
