@@ -768,7 +768,7 @@ function App() {
     if (error) setSyncError(true);
   };
   const deleteTask = async (id) => {
-    setTasks((prev) => prev.filter((t) => t.id !== id));
+    setTasks((prev) => prev.filter((t) => t.id !== id && t.parent_id !== id));
     const { error } = await sb.from("tasks").delete().eq("id", id);
     if (error) setSyncError(true);
   };
@@ -779,8 +779,21 @@ function App() {
   const setTaskCategoryById = (id, cat) => updateTask(id, { category: cat || null });
   const setTaskText = (t, text) => updateTask(t.id, { text });
 
+  /* -------- Sous-tâches : pas de temps attribué, tout reste sur la tâche principale -------- */
+  const addSubtask = async (parentId, text) => {
+    const clean = text.trim();
+    if (!clean) return;
+    const task = { id: uid(), text: clean, status: "a_faire", priority: "normale", important: false, category: null,
+      parent_id: parentId, created_at: Date.now(), updated_at: Date.now() };
+    setTasks((prev) => [task, ...prev]);
+    const { error } = await sb.from("tasks").insert(task);
+    if (error) { console.error(error); setSyncError(true); }
+  };
+  const toggleSubtask = (t) => updateTask(t.id, { status: t.status === "fait" ? "a_faire" : "fait" });
+
   /* -------- Tâches : cycle de statut, lié au suivi de temps -------- */
   const requestStatusCycle = (t) => {
+    if (t.parent_id) { toggleSubtask(t); return; } // sous-tâche : pas de temps à attribuer, bascule simple
     if (t.status === "a_faire") { updateTask(t.id, { status: "en_cours" }); return; }
     if (t.status === "fait") { updateTask(t.id, { status: "a_faire" }); return; }
     // en_cours -> ouverture du formulaire de bascule vers le suivi de temps
@@ -848,9 +861,15 @@ function App() {
   else if (routineStatusFilter === "faites") filteredRoutines = filteredRoutines.filter((r) => isRoutineDone(r));
   const routinesDueCount = routines.filter((r) => !isRoutineDone(r)).length;
 
-  const untriagedCount = useMemo(() => tasks.filter((t) => !t.category && t.status !== "fait").length, [tasks]);
+  const subtasksByParent = useMemo(() => {
+    const m = new Map();
+    tasks.forEach((t) => { if (t.parent_id) { if (!m.has(t.parent_id)) m.set(t.parent_id, []); m.get(t.parent_id).push(t); } });
+    m.forEach((list) => list.sort((a,b) => a.created_at - b.created_at));
+    return m;
+  }, [tasks]);
+  const untriagedCount = useMemo(() => tasks.filter((t) => !t.parent_id && !t.category && t.status !== "fait").length, [tasks]);
   const filteredTasks = useMemo(() => {
-    let list = tasks;
+    let list = tasks.filter((t) => !t.parent_id);
     if (statusFilter === "actives") list = list.filter((t) => t.status !== "fait");
     else if (statusFilter !== "toutes") list = list.filter((t) => t.status === statusFilter);
     if (catFilter === "none") list = list.filter((t) => !t.category);
@@ -1469,10 +1488,11 @@ function App() {
                     {!collapsed && (
                       <div style={{display:"flex",flexDirection:"column",gap:8}}>
                         {g.tasks.map((t) => (
-                          <TaskRow key={t.id} t={t} editing={editingTaskId===t.id}
+                          <TaskRow key={t.id} t={t} editing={editingTaskId===t.id} subtasks={subtasksByParent.get(t.id)}
                             onCycleStatus={()=>requestStatusCycle(t)} onTogglePriority={()=>togglePriority(t)} onToggleImportant={()=>toggleImportant(t)}
                             onSetCategory={(cat)=>setTaskCategory(t,cat)} onDelete={()=>deleteTask(t.id)}
-                            onEditStart={()=>setEditingTaskId(t.id)} onEditSave={(text)=>{setTaskText(t,text);setEditingTaskId(null);}} onEditCancel={()=>setEditingTaskId(null)} />
+                            onEditStart={()=>setEditingTaskId(t.id)} onEditSave={(text)=>{setTaskText(t,text);setEditingTaskId(null);}} onEditCancel={()=>setEditingTaskId(null)}
+                            onAddSubtask={(text)=>addSubtask(t.id,text)} onToggleSubtask={toggleSubtask} onDeleteSubtask={deleteTask} onSaveSubtask={setTaskText} />
                         ))}
                       </div>
                     )}
@@ -1887,47 +1907,98 @@ function DayGauge({todayTotal,gaugeMax,todayEntries,dayTheoretical,absence,absen
     </div>
   </div>;
 }
-function TaskRow({t,editing,onCycleStatus,onTogglePriority,onToggleImportant,onSetCategory,onDelete,onEditStart,onEditSave,onEditCancel}) {
+function TaskRow({t,editing,subtasks,onCycleStatus,onTogglePriority,onToggleImportant,onSetCategory,onDelete,onEditStart,onEditSave,onEditCancel,
+  onAddSubtask,onToggleSubtask,onDeleteSubtask,onSaveSubtask}) {
   const s = statusByKey(t.status);
   const cat = t.category ? catByKey(t.category) : null;
   const [draft,setDraft] = useState(t.text);
   const isDone = t.status === "fait";
+  const subs = subtasks || [];
+  const [expanded, setExpanded] = useState(false);
+  const [newSubtask, setNewSubtask] = useState("");
+  const doneCount = subs.filter((st) => st.status === "fait").length;
+
+  const submitSubtask = () => { const v = newSubtask.trim(); if (!v) return; onAddSubtask(v); setNewSubtask(""); };
 
   return (
-    <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:C.panel,borderRadius:12,border:`1px solid ${C.border2}`,boxShadow:"0 1px 2px rgba(22,48,46,0.06)"}}>
-      <button onClick={onCycleStatus} title="Changer le statut" style={{
-        width:20,height:20,borderRadius:12,border:`2px solid ${s.color}`,background:isDone?s.color:"transparent",
-        display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",padding:0}}>
-        {isDone && <span style={{color:"#16302E",fontSize:12,lineHeight:1,fontWeight:700}}>✓</span>}
-      </button>
+    <div style={{background:C.panel,borderRadius:12,border:`1px solid ${C.border2}`,boxShadow:"0 1px 2px rgba(22,48,46,0.06)"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px"}}>
+        <button onClick={onCycleStatus} title="Changer le statut" style={{
+          width:20,height:20,borderRadius:12,border:`2px solid ${s.color}`,background:isDone?s.color:"transparent",
+          display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",padding:0}}>
+          {isDone && <span style={{color:"#16302E",fontSize:12,lineHeight:1,fontWeight:700}}>✓</span>}
+        </button>
 
-      <button onClick={onTogglePriority} title="Marquer urgent" style={{background:"none",border:"none",cursor:"pointer",fontSize:15,opacity:t.priority==="urgente"?1:0.3,flexShrink:0,padding:0}}>
-        🔴
-      </button>
+        <button onClick={onTogglePriority} title="Marquer urgent" style={{background:"none",border:"none",cursor:"pointer",fontSize:15,opacity:t.priority==="urgente"?1:0.3,flexShrink:0,padding:0}}>
+          🔴
+        </button>
 
-      <button onClick={onToggleImportant} title="Marquer important" style={{background:"none",border:"none",cursor:"pointer",fontSize:15,opacity:t.important?1:0.3,flexShrink:0,padding:0}}>
-        ⭐
-      </button>
+        <button onClick={onToggleImportant} title="Marquer important" style={{background:"none",border:"none",cursor:"pointer",fontSize:15,opacity:t.important?1:0.3,flexShrink:0,padding:0}}>
+          ⭐
+        </button>
 
-      <div style={{flex:1,minWidth:0}}>
-        {editing ? (
-          <input autoFocus value={draft} onChange={(e)=>setDraft(e.target.value)}
-            onKeyDown={(e)=>{if(e.key==="Enter") onEditSave(draft); if(e.key==="Escape") onEditCancel();}}
-            onBlur={()=>onEditSave(draft)}
-            style={{width:"100%",background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:12,padding:"4px 6px",fontSize:14,color:C.text}} />
-        ) : (
-          <span onClick={onEditStart} style={{fontSize:14,cursor:"text",textDecoration:isDone?"line-through":"none",color:isDone?C.muted:C.text}}>{t.text}</span>
-        )}
+        <div style={{flex:1,minWidth:0}}>
+          {editing ? (
+            <input autoFocus value={draft} onChange={(e)=>setDraft(e.target.value)}
+              onKeyDown={(e)=>{if(e.key==="Enter") onEditSave(draft); if(e.key==="Escape") onEditCancel();}}
+              onBlur={()=>onEditSave(draft)}
+              style={{width:"100%",background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:12,padding:"4px 6px",fontSize:14,color:C.text}} />
+          ) : (
+            <span onClick={onEditStart} style={{fontSize:14,cursor:"text",textDecoration:isDone?"line-through":"none",color:isDone?C.muted:C.text}}>{t.text}</span>
+          )}
+        </div>
+
+        <button onClick={()=>setExpanded((e)=>!e)} title="Sous-tâches" style={{background:"none",border:"none",cursor:"pointer",
+          fontSize:11,color:subs.length?C.muted:C.faint,display:"flex",alignItems:"center",gap:3,flexShrink:0,padding:"2px 4px"}}>
+          <span>{expanded?"▾":"▸"}</span>
+          {subs.length>0 ? <span className="mono">{doneCount}/{subs.length}</span> : <span>+ sous-tâche</span>}
+        </button>
+
+        <select value={t.category||""} onChange={(e)=>onSetCategory(e.target.value)} style={{
+          fontSize:11,padding:"4px 6px",borderRadius:12,border:`1px solid ${cat?cat.color+"55":C.border2}`,
+          background:cat?`${cat.color}12`:C.panel2, color:cat?cat.color:C.muted, cursor:"pointer",maxWidth:130}}>
+          <option value="">— catégorie —</option>
+          {CATS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+        </select>
+
+        <button onClick={onDelete} style={{background:"none",border:"none",cursor:"pointer",padding:4}} title="Supprimer">🗑️</button>
       </div>
 
-      <select value={t.category||""} onChange={(e)=>onSetCategory(e.target.value)} style={{
-        fontSize:11,padding:"4px 6px",borderRadius:12,border:`1px solid ${cat?cat.color+"55":C.border2}`,
-        background:cat?`${cat.color}12`:C.panel2, color:cat?cat.color:C.muted, cursor:"pointer",maxWidth:130}}>
-        <option value="">— catégorie —</option>
-        {CATS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
-      </select>
-
-      <button onClick={onDelete} style={{background:"none",border:"none",cursor:"pointer",padding:4}} title="Supprimer">🗑️</button>
+      {expanded && (
+        <div style={{padding:"0 12px 10px 42px",display:"flex",flexDirection:"column",gap:6,borderTop:`1px solid ${C.border}`,marginTop:-1,paddingTop:8}}>
+          {subs.map((st) => (
+            <SubtaskRow key={st.id} subtask={st} onToggle={()=>onToggleSubtask(st)} onDelete={()=>onDeleteSubtask(st.id)} onSave={(text)=>onSaveSubtask(st,text)} />
+          ))}
+          <input value={newSubtask} onChange={(e)=>setNewSubtask(e.target.value)}
+            onKeyDown={(e)=>{if(e.key==="Enter") submitSubtask();}}
+            placeholder="+ ajouter une sous-tâche…"
+            style={{fontSize:12,background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:8,padding:"5px 8px",color:C.text}} />
+        </div>
+      )}
+    </div>
+  );
+}
+function SubtaskRow({subtask,onToggle,onDelete,onSave}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(subtask.text);
+  const isDone = subtask.status === "fait";
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:8}}>
+      <button onClick={onToggle} title={isDone?"Remettre à faire":"Marquer comme fait"} style={{
+        width:16,height:16,borderRadius:999,border:`2px solid ${isDone?C.turquoise:C.border2}`,background:isDone?C.turquoise:"transparent",
+        display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",padding:0}}>
+        {isDone && <span style={{color:"#fff",fontSize:9,lineHeight:1,fontWeight:700}}>✓</span>}
+      </button>
+      {editing ? (
+        <input autoFocus value={draft} onChange={(e)=>setDraft(e.target.value)}
+          onKeyDown={(e)=>{if(e.key==="Enter"){onSave(draft);setEditing(false);} if(e.key==="Escape") setEditing(false);}}
+          onBlur={()=>{onSave(draft);setEditing(false);}}
+          style={{flex:1,minWidth:0,fontSize:13,background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:8,padding:"2px 6px",color:C.text}} />
+      ) : (
+        <span onClick={()=>setEditing(true)} style={{flex:1,minWidth:0,fontSize:13,cursor:"text",
+          textDecoration:isDone?"line-through":"none",color:isDone?C.muted:C.text,overflowWrap:"anywhere"}}>{subtask.text}</span>
+      )}
+      <button onClick={onDelete} style={{background:"none",border:"none",cursor:"pointer",padding:2,fontSize:10,flexShrink:0}} title="Supprimer">🗑️</button>
     </div>
   );
 }
