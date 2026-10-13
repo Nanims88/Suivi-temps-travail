@@ -918,6 +918,11 @@ function App() {
     return m;
   }, [tasks]);
   const untriagedCount = useMemo(() => tasks.filter((t) => !t.parent_id && !t.category && t.status !== "fait").length, [tasks]);
+  const urgentImportantTasks = useMemo(() => {
+    const score = (t) => (t.priority==="urgente"?2:0) + (t.important?1:0);
+    return tasks.filter((t) => !t.parent_id && t.status !== "fait" && (t.priority==="urgente" || t.important))
+      .sort((a,b) => score(b)-score(a) || b.created_at-a.created_at);
+  }, [tasks]);
   const filteredTasks = useMemo(() => {
     let list = tasks.filter((t) => !t.parent_id);
     if (statusFilter === "actives") list = list.filter((t) => t.status !== "fait");
@@ -1376,10 +1381,24 @@ function App() {
 
         </div>
 
-        <div style={{position:"sticky",top:20}}>
+        <div style={{position:"sticky",top:20,display:"flex",flexDirection:"column",gap:16,maxHeight:"calc(100vh - 40px)",overflowY:"auto"}}>
+          {urgentImportantTasks.length > 0 && (
+            <Panel title="🔴⭐ Urgent & important">
+              <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:240,overflowY:"auto"}}>
+                {urgentImportantTasks.map((t) => (
+                  <TaskRow key={t.id} t={t} editing={editingTaskId===t.id} subtasks={subtasksByParent.get(t.id)} compact
+                    onCycleStatus={()=>requestStatusCycle(t)} onTogglePriority={()=>togglePriority(t)} onToggleImportant={()=>toggleImportant(t)}
+                    onSetCategory={(cat)=>setTaskCategoryById(t.id,cat)} onDelete={()=>deleteTask(t.id)}
+                    onEditStart={()=>setEditingTaskId(t.id)} onEditSave={(text)=>{setTaskText(t,text);setEditingTaskId(null);}} onEditCancel={()=>setEditingTaskId(null)}
+                    onAddSubtask={(text)=>addSubtask(t.id,text)} onToggleSubtask={toggleSubtask} onDeleteSubtask={deleteTask} onSaveSubtask={setTaskText} />
+                ))}
+              </div>
+            </Panel>
+          )}
+
           <Panel title={entryDate===todayIso ? `Aujourd'hui — ${fmt(todayTotal)}` : `${parseISO(entryDate).toLocaleDateString("fr-FR",{weekday:"long",day:"2-digit",month:"long"})} — ${fmt(entryDateTotal)}`}>
             {entryDateEntries.length===0 ? <div style={{color:C.faint,fontSize:13}}>Aucune saisie pour l'instant.</div> :
-              <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:"calc(100vh - 160px)",overflowY:"auto"}}>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
                 {entryDateEntries.map((e) => (
                   <EntryRow key={e.id} e={e} narrow onDelete={()=>deleteEntry(e.id)} onToggle={()=>toggleStatus(e.id)}
                     editing={editingId===e.id} onEditStart={()=>setEditingId(e.id)} onEditCancel={()=>setEditingId(null)} onEditSave={(patch)=>updateEntry(e.id,patch)} />
