@@ -367,6 +367,10 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   @media (max-width: 520px) {
     .routines-week { grid-template-columns: 1fr; }
   }
+  .saisie-layout { display:grid; grid-template-columns: 1fr 380px; gap:24px; align-items:start; }
+  @media (max-width: 980px) {
+    .saisie-layout { grid-template-columns: 1fr; }
+  }
   .app-header { display:grid; grid-template-columns: 1fr auto 1fr; align-items:center; position:relative; overflow:hidden;
     background:
       radial-gradient(circle at 92% -30%, rgba(87,203,187,0.38), transparent 55%),
@@ -1237,7 +1241,9 @@ function App() {
       )}
 
       {tab === "saisie" && (
-        <div style={{padding:20,maxWidth:900,margin:"0 auto"}}>
+        <div style={{padding:20,maxWidth:1500,margin:"0 auto"}}>
+        <div className="saisie-layout">
+        <div>
           <TimeClock log={todayLog} onChange={(l)=>persistDayLog(todayIso,l)} todayTotal={todayTotal} onLogEcart={addRawEntry} />
           <DayGauge todayTotal={todayTotal} gaugeMax={gaugeMax} todayEntries={todayEntries} dayTheoretical={dayTheoretical} absence={todayLog?.absence} absenceDuree={todayLog?.absence_duree} />
 
@@ -1368,15 +1374,20 @@ function App() {
             </>
           )}
 
-          <Section title={entryDate===todayIso ? `Aujourd'hui — ${fmt(todayTotal)}` : `${parseISO(entryDate).toLocaleDateString("fr-FR",{weekday:"long",day:"2-digit",month:"long"})} — ${fmt(entryDateTotal)}`}>
+        </div>
+
+        <div style={{position:"sticky",top:20}}>
+          <Panel title={entryDate===todayIso ? `Aujourd'hui — ${fmt(todayTotal)}` : `${parseISO(entryDate).toLocaleDateString("fr-FR",{weekday:"long",day:"2-digit",month:"long"})} — ${fmt(entryDateTotal)}`}>
             {entryDateEntries.length===0 ? <div style={{color:C.faint,fontSize:13}}>Aucune saisie pour l'instant.</div> :
-              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:"calc(100vh - 160px)",overflowY:"auto"}}>
                 {entryDateEntries.map((e) => (
-                  <EntryRow key={e.id} e={e} onDelete={()=>deleteEntry(e.id)} onToggle={()=>toggleStatus(e.id)}
+                  <EntryRow key={e.id} e={e} narrow onDelete={()=>deleteEntry(e.id)} onToggle={()=>toggleStatus(e.id)}
                     editing={editingId===e.id} onEditStart={()=>setEditingId(e.id)} onEditCancel={()=>setEditingId(null)} onEditSave={(patch)=>updateEntry(e.id,patch)} />
                 ))}
               </div>}
-          </Section>
+          </Panel>
+        </div>
+        </div>
         </div>
       )}
 
@@ -1913,7 +1924,7 @@ function SimpleBars({data}) {
     </div>
   </div>;
 }
-function EntryRow({e,onDelete,onToggle,showDate,editing,onEditStart,onEditCancel,onEditSave}) {
+function EntryRow({e,onDelete,onToggle,showDate,editing,onEditStart,onEditCancel,onEditSave,narrow}) {
   const cat = catByKey(e.cat);
   const [draft,setDraft] = useState(null);
   useEffect(() => { if (editing) setDraft({ cat:e.cat, sub:e.sub, date:e.date, minutes:e.minutes, subject:e.subject||"", comment:e.comment||"" }); }, [editing]);
@@ -1944,6 +1955,28 @@ function EntryRow({e,onDelete,onToggle,showDate,editing,onEditStart,onEditCancel
       <div style={{display:"flex",gap:8}}>
         <button onClick={()=>onEditSave(draft)} style={{fontSize:12,color:C.abysse,background:`${C.abysse}15`,border:`1px solid ${C.abysse}55`,borderRadius:12,padding:"6px 12px",cursor:"pointer"}}>Enregistrer</button>
         <button onClick={onEditCancel} style={{fontSize:12,color:C.muted,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:12,padding:"6px 12px",cursor:"pointer"}}>Annuler</button>
+      </div>
+    </div>;
+  }
+
+  if (narrow) {
+    return <div style={{padding:"8px 10px",background:C.panel2,borderRadius:12,border:`1px solid ${C.border}`,display:"flex",flexDirection:"column",gap:4}}>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <span style={{width:8,height:8,borderRadius:999,background:cat.color,flexShrink:0}} />
+        <span style={{fontSize:13,fontWeight:600,color:C.text,flex:1,minWidth:0,overflowWrap:"anywhere"}}>{cat.label}</span>
+        <span className="mono" style={{fontSize:13,color:C.text,flexShrink:0}}>{fmt(e.minutes)}</span>
+      </div>
+      <div style={{fontSize:12,color:C.muted,paddingLeft:16,overflowWrap:"anywhere"}}>
+        {showDate && <span className="mono" style={{color:C.faint,marginRight:6}}>{e.date.slice(5)}</span>}
+        {e.sub}{e.subject && ` · ${e.subject}`}
+      </div>
+      {e.comment && <div style={{fontSize:11,color:C.faint,paddingLeft:16,overflowWrap:"anywhere"}}>{e.comment}</div>}
+      <div style={{display:"flex",alignItems:"center",gap:6,paddingLeft:16,marginTop:2}}>
+        <button onClick={onToggle} style={{fontSize:10,padding:"3px 8px",borderRadius:999,border:`1px solid ${e.status==="Terminé"?"#57CBBB":C.border2}`,
+          color:e.status==="Terminé"?C.abysse:C.muted, background:e.status==="Terminé"?"#57CBBB22":"transparent",whiteSpace:"nowrap",cursor:"pointer"}}>{e.status}</button>
+        <div style={{flex:1}} />
+        <button onClick={onEditStart} style={{background:"none",border:"none",cursor:"pointer",padding:4}} title="Modifier">✏️</button>
+        <button onClick={onDelete} style={{background:"none",border:"none",cursor:"pointer",padding:4}} title="Supprimer">🗑️</button>
       </div>
     </div>;
   }
