@@ -1960,24 +1960,21 @@ function EntryRow({e,onDelete,onToggle,showDate,editing,onEditStart,onEditCancel
   }
 
   if (narrow) {
-    return <div style={{padding:"8px 10px",background:C.panel2,borderRadius:12,border:`1px solid ${C.border}`,display:"flex",flexDirection:"column",gap:4}}>
-      <div style={{display:"flex",alignItems:"center",gap:8}}>
+    return <div style={{padding:"7px 10px",background:C.panel2,borderRadius:12,border:`1px solid ${C.border}`,display:"flex",flexDirection:"column",gap:3}}>
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
         <span style={{width:8,height:8,borderRadius:999,background:cat.color,flexShrink:0}} />
         <span style={{fontSize:13,fontWeight:600,color:C.text,flex:1,minWidth:0,overflowWrap:"anywhere"}}>{cat.label}</span>
+        <button onClick={onToggle} style={{fontSize:10,padding:"3px 7px",borderRadius:999,border:`1px solid ${e.status==="Terminé"?"#57CBBB":C.border2}`,
+          color:e.status==="Terminé"?C.abysse:C.muted, background:e.status==="Terminé"?"#57CBBB22":"transparent",whiteSpace:"nowrap",cursor:"pointer",flexShrink:0}}>{e.status}</button>
         <span className="mono" style={{fontSize:13,color:C.text,flexShrink:0}}>{fmt(e.minutes)}</span>
+        <button onClick={onEditStart} style={{background:"none",border:"none",cursor:"pointer",padding:2,flexShrink:0}} title="Modifier">✏️</button>
+        <button onClick={onDelete} style={{background:"none",border:"none",cursor:"pointer",padding:2,flexShrink:0}} title="Supprimer">🗑️</button>
       </div>
-      <div style={{fontSize:12,color:C.muted,paddingLeft:16,overflowWrap:"anywhere"}}>
+      <div style={{fontSize:12,color:C.muted,paddingLeft:14,overflowWrap:"anywhere"}}>
         {showDate && <span className="mono" style={{color:C.faint,marginRight:6}}>{e.date.slice(5)}</span>}
         {e.sub}{e.subject && ` · ${e.subject}`}
       </div>
-      {e.comment && <div style={{fontSize:11,color:C.faint,paddingLeft:16,overflowWrap:"anywhere"}}>{e.comment}</div>}
-      <div style={{display:"flex",alignItems:"center",gap:6,paddingLeft:16,marginTop:2}}>
-        <button onClick={onToggle} style={{fontSize:10,padding:"3px 8px",borderRadius:999,border:`1px solid ${e.status==="Terminé"?"#57CBBB":C.border2}`,
-          color:e.status==="Terminé"?C.abysse:C.muted, background:e.status==="Terminé"?"#57CBBB22":"transparent",whiteSpace:"nowrap",cursor:"pointer"}}>{e.status}</button>
-        <div style={{flex:1}} />
-        <button onClick={onEditStart} style={{background:"none",border:"none",cursor:"pointer",padding:4}} title="Modifier">✏️</button>
-        <button onClick={onDelete} style={{background:"none",border:"none",cursor:"pointer",padding:4}} title="Supprimer">🗑️</button>
-      </div>
+      {e.comment && <div style={{fontSize:11,color:C.faint,paddingLeft:14,overflowWrap:"anywhere"}}>{e.comment}</div>}
     </div>;
   }
 
