@@ -1462,21 +1462,21 @@ function App() {
       )}
 
       {tab === "taches" && (
-        <div style={{padding:"20px clamp(20px,4vw,56px)",maxWidth:taskView==="matrice"?1800:(taskView==="tableau"||taskView==="notes")?"100%":1200,margin:"0 auto"}}>
-          <div style={{display:"flex",gap:8,marginBottom:16}}>
+        <div style={{padding:"16px clamp(20px,4vw,56px)",maxWidth:taskView==="matrice"?1800:(taskView==="tableau"||taskView==="notes")?"100%":1200,margin:"0 auto"}}>
+          <div style={{display:"flex",gap:8,marginBottom:12}}>
             <input
               value={quickText}
               onChange={(e)=>setQuickText(e.target.value)}
               onKeyDown={(e)=>{if(e.key==="Enter") addTask();}}
               placeholder="Note ce à quoi tu penses… (Entrée pour ajouter)"
-              style={{flex:1,background:C.panel,border:`1px solid ${C.border2}`,borderRadius:12,padding:"12px 14px",fontSize:15,color:C.text}}
+              style={{flex:1,background:C.panel,border:`1px solid ${C.border2}`,borderRadius:12,padding:"10px 14px",fontSize:15,color:C.text}}
             />
             <button onClick={addTask} style={{padding:"0 20px",borderRadius:12,border:"none",background:C.abysse,color:"#FFFFFF",fontSize:14,fontWeight:600,cursor:"pointer"}}>
               Ajouter
             </button>
           </div>
 
-          <div style={{display:"flex",gap:4,background:C.panel,borderRadius:999,padding:3,border:`1px solid ${C.border}`,marginBottom:16,width:"fit-content"}}>
+          <div style={{display:"flex",gap:4,background:C.panel,borderRadius:999,padding:3,border:`1px solid ${C.border}`,marginBottom:12,width:"fit-content"}}>
             {[["notes","📓 Carnet"],["liste","☰ Liste"],["tableau","🗂️ Tableau"],["matrice","▦ Matrice d'Eisenhower"]].map(([k,label]) => (
               <button key={k} onClick={()=>setTaskView(k)} style={{padding:"6px 14px",borderRadius:999,fontSize:13,
                 background:taskView===k?C.panel2:"transparent", color:taskView===k?C.text:C.muted, border:"none",cursor:"pointer"}}>{label}</button>
@@ -1485,13 +1485,13 @@ function App() {
 
           {untriagedCount > 0 && (
             <button onClick={()=>{setCatFilter("none");setStatusFilter("actives");}} className="chip" style={{
-              display:"flex",alignItems:"center",gap:8,width:"100%",textAlign:"left",marginBottom:16,padding:"10px 14px",borderRadius:12,
+              display:"flex",alignItems:"center",gap:8,width:"100%",textAlign:"left",marginBottom:12,padding:"8px 12px",borderRadius:12,
               border:"1px solid #F8AC1655",background:"#F8AC1615",color:"#8A5D00",fontSize:13,cursor:"pointer"}}>
               🗂️ <b>{untriagedCount}</b> tâche{untriagedCount>1?"s":""} à trier (sans catégorie)
             </button>
           )}
 
-          <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+          <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
             {[["actives","Actives"],["a_faire","À faire"],["en_cours","En cours"],["fait","Fait"],["toutes","Toutes"]].map(([k,label]) => (
               <button key={k} onClick={()=>setStatusFilter(k)} style={{padding:"6px 12px",borderRadius:999,fontSize:12,
                 border:`1px solid ${statusFilter===k?C.abysse:C.border2}`, background:statusFilter===k?`${C.abysse}15`:C.panel, color:statusFilter===k?C.abysse:C.muted, cursor:"pointer"}}>{label}</button>
@@ -1503,7 +1503,7 @@ function App() {
             )}
           </div>
 
-          <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+          <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
             <button onClick={()=>setCatFilter(null)} style={{padding:"5px 10px",borderRadius:999,fontSize:11,
               border:`1px solid ${!catFilter?C.abysse:C.border2}`, background:!catFilter?`${C.abysse}15`:C.panel, color:!catFilter?C.abysse:C.muted, cursor:"pointer"}}>Toutes catégories</button>
             {CATS.map((c) => (
@@ -1996,7 +1996,7 @@ function TaskRow({t,editing,subtasks,compact,onCycleStatus,onTogglePriority,onTo
 
   return (
     <div style={{background:C.panel,borderRadius:12,border:`1px solid ${C.border2}`,boxShadow:"0 1px 2px rgba(22,48,46,0.06)"}}>
-      <div style={{display:"flex",alignItems:"center",gap:compact?8:10,padding:compact?"7px 10px":"10px 12px",flexWrap:"wrap"}}>
+      <div style={{display:"flex",alignItems:"center",gap:compact?6:10,padding:compact?"5px 8px":"10px 12px",flexWrap:"wrap"}}>
         <button onClick={onCycleStatus} title="Changer le statut" style={{
           width:compact?18:20,height:compact?18:20,borderRadius:12,border:`2.5px solid ${s.color}`,background:isDone?s.color:`${s.color}12`,
           display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",padding:0}}>
@@ -2043,14 +2043,14 @@ function TaskRow({t,editing,subtasks,compact,onCycleStatus,onTogglePriority,onTo
       </div>
 
       {expanded && (
-        <div style={{padding:"0 12px 10px 42px",display:"flex",flexDirection:"column",gap:6,borderTop:`1px solid ${C.border}`,marginTop:-1,paddingTop:8}}>
+        <div style={{padding:compact?"0 8px 7px 32px":"0 12px 10px 42px",display:"flex",flexDirection:"column",gap:5,borderTop:`1px solid ${C.border}`,marginTop:-1,paddingTop:6}}>
           {subs.map((st) => (
             <SubtaskRow key={st.id} subtask={st} onToggle={()=>onToggleSubtask(st)} onDelete={()=>onDeleteSubtask(st.id)} onSave={(text)=>onSaveSubtask(st,text)} />
           ))}
           <input value={newSubtask} onChange={(e)=>setNewSubtask(e.target.value)}
             onKeyDown={(e)=>{if(e.key==="Enter") submitSubtask();}}
             placeholder="+ ajouter une sous-tâche…"
-            style={{alignSelf:"flex-start",width:"fit-content",minWidth:120,maxWidth:"100%",fontSize:12,background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:8,padding:"5px 8px",color:C.text}} />
+            style={{alignSelf:"flex-start",width:"fit-content",minWidth:120,maxWidth:"100%",fontSize:12,background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:8,padding:"4px 7px",color:C.text}} />
         </div>
       )}
     </div>
@@ -2217,7 +2217,7 @@ function BoardCard({t,editing,dragging,onDragStart,onDragEnd,onCycleStatus,onTog
 }
 function NotesBoard({columns,notes,editingTaskId,subtasksByParent,onSaveNote,onQuickAdd,onCycleStatus,onTogglePriority,onToggleImportant,onSetCategory,onDelete,onEditStart,onEditSave,onEditCancel,onAddSubtask,onToggleSubtask,onDeleteSubtask,onSaveSubtask}) {
   return (
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14,alignItems:"start"}}>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:10,alignItems:"start"}}>
       {columns.map((col) => (
         <NotesCard key={col.key ?? "none"} col={col} note={notes[col.key ?? "none"] || ""} editingTaskId={editingTaskId} subtasksByParent={subtasksByParent}
           onSaveNote={(content)=>onSaveNote(col.key, content)} onQuickAdd={(text)=>onQuickAdd(text, col.key)}
@@ -2262,7 +2262,7 @@ function NotesCard({col,note,editingTaskId,subtasksByParent,onSaveNote,onQuickAd
   };
 
   return (
-    <div style={{background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:16,padding:12,display:"flex",flexDirection:"column",gap:8,
+    <div style={{background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:14,padding:9,display:"flex",flexDirection:"column",gap:6,
       boxShadow:"0 1px 2px rgba(22,48,46,0.06)"}}>
       <div style={{display:"flex",alignItems:"center",gap:7}}>
         <span style={{width:9,height:9,borderRadius:999,background:col.color,flexShrink:0}} />
@@ -2270,9 +2270,9 @@ function NotesCard({col,note,editingTaskId,subtasksByParent,onSaveNote,onQuickAd
         {openCount > 0 && <span className="mono" style={{fontSize:11,fontWeight:700,color:C.abysse,flexShrink:0}}>{openCount} à faire</span>}
       </div>
 
-      <div style={{background:sortedTasks.length?C.panel:"transparent",borderRadius:12,padding:sortedTasks.length?"8px":0,display:"flex",flexDirection:"column",gap:6}}>
+      <div style={{background:sortedTasks.length?C.panel:"transparent",borderRadius:10,padding:sortedTasks.length?"6px":0,display:"flex",flexDirection:"column",gap:5}}>
         {sortedTasks.length > 0 && (
-          <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:280,overflowY:"auto"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:5,maxHeight:280,overflowY:"auto"}}>
             {sortedTasks.map((t) => (
               <TaskRow key={t.id} t={t} editing={editingTaskId===t.id} subtasks={subtasksByParent.get(t.id)} compact
                 onCycleStatus={()=>onCycleStatus(t)} onTogglePriority={()=>onTogglePriority(t)} onToggleImportant={()=>onToggleImportant(t)}
