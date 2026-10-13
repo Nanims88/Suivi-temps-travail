@@ -2292,15 +2292,15 @@ function NotesCard({col,note,editingTaskId,subtasksByParent,onSaveNote,onQuickAd
   };
 
   return (
-    <div style={{background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:14,padding:9,display:"flex",flexDirection:"column",gap:6,
-      boxShadow:"0 1px 2px rgba(22,48,46,0.06)"}}>
+    <div style={{background:C.panel,border:`1px solid ${C.border2}`,borderRadius:14,padding:9,display:"flex",flexDirection:"column",gap:6,
+      boxShadow:"0 1px 3px rgba(22,48,46,0.1)"}}>
       <div style={{display:"flex",alignItems:"center",gap:7}}>
         <span style={{width:9,height:9,borderRadius:999,background:col.color,flexShrink:0}} />
         <span className="disp" style={{fontSize:13,fontWeight:700,color:C.text,flex:1,minWidth:0,overflowWrap:"anywhere"}}>{col.label}</span>
         {openCount > 0 && <span className="mono" style={{fontSize:11,fontWeight:700,color:C.abysse,flexShrink:0}}>{openCount} à faire</span>}
       </div>
 
-      <div style={{background:sortedTasks.length?C.panel:"transparent",borderRadius:10,padding:sortedTasks.length?"6px":0,display:"flex",flexDirection:"column",gap:5}}>
+      <div style={{background:sortedTasks.length?C.panel2:"transparent",borderRadius:10,padding:sortedTasks.length?"6px":0,display:"flex",flexDirection:"column",gap:5}}>
         {sortedTasks.length > 0 && (
           <div style={{display:"flex",flexDirection:"column",gap:5,maxHeight:280,overflowY:"auto"}}>
             {sortedTasks.map((t) => (
