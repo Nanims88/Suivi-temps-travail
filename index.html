@@ -1971,7 +1971,7 @@ function DayGauge({todayTotal,gaugeMax,todayEntries,dayTheoretical,absence,absen
     </div>
   </div>;
 }
-function TaskRow({t,editing,subtasks,onCycleStatus,onTogglePriority,onToggleImportant,onSetCategory,onDelete,onEditStart,onEditSave,onEditCancel,
+function TaskRow({t,editing,subtasks,compact,onCycleStatus,onTogglePriority,onToggleImportant,onSetCategory,onDelete,onEditStart,onEditSave,onEditCancel,
   onAddSubtask,onToggleSubtask,onDeleteSubtask,onSaveSubtask}) {
   const s = statusByKey(t.status);
   const cat = t.category ? catByKey(t.category) : null;
@@ -1986,7 +1986,7 @@ function TaskRow({t,editing,subtasks,onCycleStatus,onTogglePriority,onToggleImpo
 
   return (
     <div style={{background:C.panel,borderRadius:12,border:`1px solid ${C.border2}`,boxShadow:"0 1px 2px rgba(22,48,46,0.06)"}}>
-      <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",flexWrap:"wrap"}}>
         <button onClick={onCycleStatus} title="Changer le statut" style={{
           width:20,height:20,borderRadius:12,border:`2px solid ${s.color}`,background:isDone?s.color:"transparent",
           display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",padding:0}}>
@@ -2001,31 +2001,35 @@ function TaskRow({t,editing,subtasks,onCycleStatus,onTogglePriority,onToggleImpo
           ⭐
         </button>
 
-        <div style={{flex:1,minWidth:0}}>
+        <div style={{flex:"1 1 120px",minWidth:0}}>
           {editing ? (
             <input autoFocus value={draft} onChange={(e)=>setDraft(e.target.value)}
               onKeyDown={(e)=>{if(e.key==="Enter") onEditSave(draft); if(e.key==="Escape") onEditCancel();}}
               onBlur={()=>onEditSave(draft)}
               style={{width:"100%",background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:12,padding:"4px 6px",fontSize:14,color:C.text}} />
           ) : (
-            <span onClick={onEditStart} style={{fontSize:14,cursor:"text",textDecoration:isDone?"line-through":"none",color:isDone?C.muted:C.text}}>{t.text}</span>
+            <span onClick={onEditStart} style={{fontSize:14,cursor:"text",textDecoration:isDone?"line-through":"none",color:isDone?C.muted:C.text,overflowWrap:"anywhere"}}>{t.text}</span>
           )}
         </div>
 
-        <button onClick={()=>setExpanded((e)=>!e)} title="Sous-tâches" style={{background:"none",border:"none",cursor:"pointer",
-          fontSize:11,color:subs.length?C.muted:C.faint,display:"flex",alignItems:"center",gap:3,flexShrink:0,padding:"2px 4px"}}>
-          <span>{expanded?"▾":"▸"}</span>
-          {subs.length>0 ? <span className="mono">{doneCount}/{subs.length}</span> : <span>+ sous-tâche</span>}
-        </button>
+        <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0,marginLeft:"auto"}}>
+          <button onClick={()=>setExpanded((e)=>!e)} title="Sous-tâches" style={{background:"none",border:"none",cursor:"pointer",
+            fontSize:11,color:subs.length?C.muted:C.faint,display:"flex",alignItems:"center",gap:3,flexShrink:0,padding:"2px 4px"}}>
+            <span>{expanded?"▾":"▸"}</span>
+            {subs.length>0 ? <span className="mono">{doneCount}/{subs.length}</span> : <span>+ sous-tâche</span>}
+          </button>
 
-        <select value={t.category||""} onChange={(e)=>onSetCategory(e.target.value)} style={{
-          fontSize:11,padding:"4px 6px",borderRadius:12,border:`1px solid ${cat?cat.color+"55":C.border2}`,
-          background:cat?`${cat.color}12`:C.panel2, color:cat?cat.color:C.muted, cursor:"pointer",maxWidth:130}}>
-          <option value="">— catégorie —</option>
-          {CATS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
-        </select>
+          {!compact && (
+            <select value={t.category||""} onChange={(e)=>onSetCategory(e.target.value)} style={{
+              fontSize:11,padding:"4px 6px",borderRadius:12,border:`1px solid ${cat?cat.color+"55":C.border2}`,
+              background:cat?`${cat.color}12`:C.panel2, color:cat?cat.color:C.muted, cursor:"pointer",maxWidth:130,flexShrink:0}}>
+              <option value="">— catégorie —</option>
+              {CATS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+            </select>
+          )}
 
-        <button onClick={onDelete} style={{background:"none",border:"none",cursor:"pointer",padding:4}} title="Supprimer">🗑️</button>
+          <button onClick={onDelete} style={{background:"none",border:"none",cursor:"pointer",padding:4,flexShrink:0}} title="Supprimer">🗑️</button>
+        </div>
       </div>
 
       {expanded && (
@@ -2257,13 +2261,13 @@ function NotesCard({col,note,editingTaskId,subtasksByParent,onSaveNote,onQuickAd
 
       <textarea ref={taRef} value={draft} onChange={(e)=>setDraft(e.target.value)} onBlur={()=>onSaveNote(draft)} onKeyDown={handleNoteKeyDown}
         placeholder="Note tes idées ici… tape « - » en début de ligne + Entrée pour en faire une tâche"
-        style={{minHeight:70,resize:"vertical",background:C.panel2,border:`1px solid ${C.border}`,borderRadius:10,padding:"8px 10px",
+        style={{width:"100%",minHeight:70,resize:"vertical",background:C.panel2,border:`1px solid ${C.border}`,borderRadius:10,padding:"8px 10px",
           fontSize:13,color:C.text,fontFamily:"inherit",lineHeight:1.5}} />
 
       {sortedTasks.length > 0 && (
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {sortedTasks.map((t) => (
-            <TaskRow key={t.id} t={t} editing={editingTaskId===t.id} subtasks={subtasksByParent.get(t.id)}
+            <TaskRow key={t.id} t={t} editing={editingTaskId===t.id} subtasks={subtasksByParent.get(t.id)} compact
               onCycleStatus={()=>onCycleStatus(t)} onTogglePriority={()=>onTogglePriority(t)} onToggleImportant={()=>onToggleImportant(t)}
               onSetCategory={(cat)=>onSetCategory(t.id,cat)} onDelete={()=>onDelete(t.id)}
               onEditStart={()=>onEditStart(t.id)} onEditSave={(text)=>onEditSave(t,text)} onEditCancel={onEditCancel}
@@ -2274,7 +2278,7 @@ function NotesCard({col,note,editingTaskId,subtasksByParent,onSaveNote,onQuickAd
 
       <input value={quick} onChange={(e)=>setQuick(e.target.value)} onKeyDown={(e)=>{if(e.key==="Enter") submitQuick();}}
         placeholder="+ tâche rapide…"
-        style={{fontSize:12,background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:8,padding:"6px 9px",color:C.text}} />
+        style={{width:"100%",fontSize:12,background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:8,padding:"6px 9px",color:C.text}} />
     </div>
   );
 }
