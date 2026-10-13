@@ -470,7 +470,7 @@ const DURATIONS = [5, 10, 15, 20, 30, 45, 60, 90];
 
 /* ======================= STATUTS TÂCHES ======================= */
 const STATUS = [
-  { key: "a_faire", label: "À faire", color: "#5C6F6C" },
+  { key: "a_faire", label: "À faire", color: C.abysse },
   { key: "en_cours", label: "En cours", color: "#57CBBB" },
   { key: "fait", label: "Fait", color: "#57CBBB" },
 ];
@@ -1986,18 +1986,18 @@ function TaskRow({t,editing,subtasks,compact,onCycleStatus,onTogglePriority,onTo
 
   return (
     <div style={{background:C.panel,borderRadius:12,border:`1px solid ${C.border2}`,boxShadow:"0 1px 2px rgba(22,48,46,0.06)"}}>
-      <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",flexWrap:"wrap"}}>
+      <div style={{display:"flex",alignItems:"center",gap:compact?8:10,padding:compact?"7px 10px":"10px 12px",flexWrap:"wrap"}}>
         <button onClick={onCycleStatus} title="Changer le statut" style={{
-          width:20,height:20,borderRadius:12,border:`2px solid ${s.color}`,background:isDone?s.color:"transparent",
+          width:compact?18:20,height:compact?18:20,borderRadius:12,border:`2.5px solid ${s.color}`,background:isDone?s.color:`${s.color}12`,
           display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",padding:0}}>
-          {isDone && <span style={{color:"#16302E",fontSize:12,lineHeight:1,fontWeight:700}}>✓</span>}
+          {isDone && <span style={{color:"#16302E",fontSize:11,lineHeight:1,fontWeight:700}}>✓</span>}
         </button>
 
-        <button onClick={onTogglePriority} title="Marquer urgent" style={{background:"none",border:"none",cursor:"pointer",fontSize:15,opacity:t.priority==="urgente"?1:0.3,flexShrink:0,padding:0}}>
+        <button onClick={onTogglePriority} title="Marquer urgent" style={{background:"none",border:"none",cursor:"pointer",fontSize:compact?13:15,opacity:t.priority==="urgente"?1:0.3,flexShrink:0,padding:0}}>
           🔴
         </button>
 
-        <button onClick={onToggleImportant} title="Marquer important" style={{background:"none",border:"none",cursor:"pointer",fontSize:15,opacity:t.important?1:0.3,flexShrink:0,padding:0}}>
+        <button onClick={onToggleImportant} title="Marquer important" style={{background:"none",border:"none",cursor:"pointer",fontSize:compact?13:15,opacity:t.important?1:0.3,flexShrink:0,padding:0}}>
           ⭐
         </button>
 
@@ -2008,7 +2008,7 @@ function TaskRow({t,editing,subtasks,compact,onCycleStatus,onTogglePriority,onTo
               onBlur={()=>onEditSave(draft)}
               style={{width:"100%",background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:12,padding:"4px 6px",fontSize:14,color:C.text}} />
           ) : (
-            <span onClick={onEditStart} style={{fontSize:14,cursor:"text",textDecoration:isDone?"line-through":"none",color:isDone?C.muted:C.text,overflowWrap:"anywhere"}}>{t.text}</span>
+            <span onClick={onEditStart} style={{fontSize:compact?13:14,fontWeight:isDone?400:600,cursor:"text",textDecoration:isDone?"line-through":"none",color:isDone?C.muted:C.text,overflowWrap:"anywhere"}}>{t.text}</span>
           )}
         </div>
 
@@ -2221,6 +2221,7 @@ function NotesBoard({columns,notes,editingTaskId,subtasksByParent,onSaveNote,onQ
 function NotesCard({col,note,editingTaskId,subtasksByParent,onSaveNote,onQuickAdd,onCycleStatus,onTogglePriority,onToggleImportant,onSetCategory,onDelete,onEditStart,onEditSave,onEditCancel,onAddSubtask,onToggleSubtask,onDeleteSubtask,onSaveSubtask}) {
   const [draft, setDraft] = useState(note);
   const [quick, setQuick] = useState("");
+  const [noteOpen, setNoteOpen] = useState(false);
   const taRef = useRef(null);
 
   const sortedTasks = [...col.tasks].sort((a,b) => {
@@ -2251,34 +2252,44 @@ function NotesCard({col,note,editingTaskId,subtasksByParent,onSaveNote,onQuickAd
   };
 
   return (
-    <div style={{background:C.panel,border:`1px solid ${C.border2}`,borderRadius:16,padding:14,display:"flex",flexDirection:"column",gap:10,
+    <div style={{background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:16,padding:12,display:"flex",flexDirection:"column",gap:8,
       boxShadow:"0 1px 2px rgba(22,48,46,0.06)"}}>
       <div style={{display:"flex",alignItems:"center",gap:7}}>
         <span style={{width:9,height:9,borderRadius:999,background:col.color,flexShrink:0}} />
         <span className="disp" style={{fontSize:13,fontWeight:700,color:C.text,flex:1,minWidth:0,overflowWrap:"anywhere"}}>{col.label}</span>
-        {openCount > 0 && <span className="mono" style={{fontSize:11,color:C.muted,flexShrink:0}}>{openCount} à faire</span>}
+        {openCount > 0 && <span className="mono" style={{fontSize:11,fontWeight:700,color:C.abysse,flexShrink:0}}>{openCount} à faire</span>}
       </div>
 
-      <textarea ref={taRef} value={draft} onChange={(e)=>setDraft(e.target.value)} onBlur={()=>onSaveNote(draft)} onKeyDown={handleNoteKeyDown}
-        placeholder="Note tes idées ici… tape « - » en début de ligne + Entrée pour en faire une tâche"
-        style={{width:"100%",minHeight:70,resize:"vertical",background:C.panel2,border:`1px solid ${C.border}`,borderRadius:10,padding:"8px 10px",
-          fontSize:13,color:C.text,fontFamily:"inherit",lineHeight:1.5}} />
+      <div style={{background:C.panel,borderRadius:12,padding:sortedTasks.length?"8px":0,display:"flex",flexDirection:"column",gap:6}}>
+        {sortedTasks.length > 0 && (
+          <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:280,overflowY:"auto"}}>
+            {sortedTasks.map((t) => (
+              <TaskRow key={t.id} t={t} editing={editingTaskId===t.id} subtasks={subtasksByParent.get(t.id)} compact
+                onCycleStatus={()=>onCycleStatus(t)} onTogglePriority={()=>onTogglePriority(t)} onToggleImportant={()=>onToggleImportant(t)}
+                onSetCategory={(cat)=>onSetCategory(t.id,cat)} onDelete={()=>onDelete(t.id)}
+                onEditStart={()=>onEditStart(t.id)} onEditSave={(text)=>onEditSave(t,text)} onEditCancel={onEditCancel}
+                onAddSubtask={(text)=>onAddSubtask(t.id,text)} onToggleSubtask={onToggleSubtask} onDeleteSubtask={onDeleteSubtask} onSaveSubtask={onSaveSubtask} />
+            ))}
+          </div>
+        )}
+        <input value={quick} onChange={(e)=>setQuick(e.target.value)} onKeyDown={(e)=>{if(e.key==="Enter") submitQuick();}}
+          placeholder="+ tâche rapide…"
+          style={{width:"100%",fontSize:12,background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:8,padding:"6px 9px",color:C.text}} />
+      </div>
 
-      {sortedTasks.length > 0 && (
-        <div style={{display:"flex",flexDirection:"column",gap:6}}>
-          {sortedTasks.map((t) => (
-            <TaskRow key={t.id} t={t} editing={editingTaskId===t.id} subtasks={subtasksByParent.get(t.id)} compact
-              onCycleStatus={()=>onCycleStatus(t)} onTogglePriority={()=>onTogglePriority(t)} onToggleImportant={()=>onToggleImportant(t)}
-              onSetCategory={(cat)=>onSetCategory(t.id,cat)} onDelete={()=>onDelete(t.id)}
-              onEditStart={()=>onEditStart(t.id)} onEditSave={(text)=>onEditSave(t,text)} onEditCancel={onEditCancel}
-              onAddSubtask={(text)=>onAddSubtask(t.id,text)} onToggleSubtask={onToggleSubtask} onDeleteSubtask={onDeleteSubtask} onSaveSubtask={onSaveSubtask} />
-          ))}
-        </div>
+      {noteOpen ? (
+        <textarea ref={taRef} autoFocus value={draft} onChange={(e)=>setDraft(e.target.value)}
+          onBlur={()=>{onSaveNote(draft);setNoteOpen(false);}} onKeyDown={handleNoteKeyDown}
+          placeholder="Note tes idées ici… tape « - » en début de ligne + Entrée pour en faire une tâche"
+          style={{width:"100%",minHeight:70,resize:"vertical",background:C.panel2,border:`1px solid ${C.border}`,borderRadius:10,padding:"8px 10px",
+            fontSize:13,color:C.text,fontFamily:"inherit",lineHeight:1.5}} />
+      ) : (
+        <button onClick={()=>setNoteOpen(true)} style={{textAlign:"left",background:"none",border:"none",cursor:"pointer",padding:"2px 2px",
+          fontSize:11,color:draft?C.muted:C.faint,display:"flex",alignItems:"center",gap:5,overflow:"hidden"}}>
+          <span style={{flexShrink:0}}>📝</span>
+          <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{draft ? draft.split("\n")[0] : "+ note libre…"}</span>
+        </button>
       )}
-
-      <input value={quick} onChange={(e)=>setQuick(e.target.value)} onKeyDown={(e)=>{if(e.key==="Enter") submitQuick();}}
-        placeholder="+ tâche rapide…"
-        style={{width:"100%",fontSize:12,background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:8,padding:"6px 9px",color:C.text}} />
     </div>
   );
 }
