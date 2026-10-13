@@ -1401,11 +1401,11 @@ async function importerConditionsNationales(file, annee){
       lignes.push({
         fournisseur_id: f.id, annee, categorie: 'remise',
         grand_marche: idx.grandMarche !== undefined ? (r[idx.grandMarche] || null) : null,
-        libelle: [idx.typeRemise !== undefined && r[idx.typeRemise], idx.rubrique !== undefined && r[idx.rubrique]]
+        libelle: [idx.typeRemise !== undefined && r[idx.typeRemise], idx.ligneContrat !== undefined && r[idx.ligneContrat]]
           .filter(Boolean).join(' — ') || 'Remise',
         valeur_texte: num !== null ? `${num}${unite ? ' ' + unite : ''}` : null,
         valeur_num: num, unite,
-        commentaire: idx.ligneContrat !== undefined ? (r[idx.ligneContrat] || null) : null,
+        commentaire: idx.rubrique !== undefined ? (r[idx.rubrique] || null) : null,
       });
     });
   }
