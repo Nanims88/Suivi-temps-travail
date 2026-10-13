@@ -683,7 +683,8 @@ function App() {
   const [statusFilter, setStatusFilter] = useState("actives");
   const [catFilter, setCatFilter] = useState(null);
   const [urgentOnly, setUrgentOnly] = useState(false);
-  const [taskView, setTaskView] = useState("liste");
+  const [taskView, setTaskView] = useState("notes");
+  const [taskNotes, setTaskNotes] = useState({});
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [collapsedGroups, setCollapsedGroups] = useState({});
   const [timeLogTask, setTimeLogTask] = useState(null);
@@ -705,13 +706,14 @@ function App() {
   const loadAll = useCallback(async () => {
     setLoaded(false);
     try {
-      const [e, s, d, p, tk, rt] = await Promise.all([
+      const [e, s, d, p, tk, rt, tn] = await Promise.all([
         sb.from("entries").select("*").order("date", { ascending: false }),
         sb.from("app_settings").select("*").eq("id", 1).maybeSingle(),
         sb.from("day_logs").select("*"),
         sb.from("projects").select("*").order("name"),
         sb.from("tasks").select("*").order("created_at", { ascending: false }),
         sb.from("routines").select("*").order("created_at", { ascending: false }),
+        sb.from("task_notes").select("*"),
       ]);
       setEntries(e.data || []);
       setSettings(s.data ? { weeklyHours: Number(s.data.weekly_hours) } : { weeklyHours: 35 });
@@ -721,6 +723,9 @@ function App() {
       setProjects((p.data || []).map((r) => r.name));
       setTasks(tk.data || []);
       setRoutines(rt.data || []);
+      const tnMap = {};
+      (tn.data || []).forEach((row) => { tnMap[row.category] = row.content; });
+      setTaskNotes(tnMap);
     } catch (err) {
       console.error(err);
       setSyncError(true);
@@ -778,6 +783,22 @@ function App() {
   const setTaskCategory = (t, cat) => updateTask(t.id, { category: cat || null });
   const setTaskCategoryById = (id, cat) => updateTask(id, { category: cat || null });
   const setTaskText = (t, text) => updateTask(t.id, { text });
+  const addTaskWithCategory = async (text, category) => {
+    const clean = text.trim();
+    if (!clean) return;
+    const task = { id: uid(), text: clean, status: "a_faire", priority: "normale", important: false, category: category || null, created_at: Date.now(), updated_at: Date.now() };
+    setTasks((prev) => [task, ...prev]);
+    const { error } = await sb.from("tasks").insert(task);
+    if (error) { console.error(error); setSyncError(true); }
+  };
+
+  /* -------- Notes libres : une fiche par catégorie, dans la vue "Carnet" -------- */
+  const saveTaskNote = async (catKey, content) => {
+    const key = catKey || "none";
+    setTaskNotes((prev) => ({ ...prev, [key]: content }));
+    const { error } = await sb.from("task_notes").upsert({ category: key, content, updated_at: Date.now() });
+    if (error) setSyncError(true);
+  };
 
   /* -------- Sous-tâches : pas de temps attribué, tout reste sur la tâche principale -------- */
   const addSubtask = async (parentId, text) => {
@@ -1441,7 +1462,7 @@ function App() {
       )}
 
       {tab === "taches" && (
-        <div style={{padding:"20px clamp(20px,4vw,56px)",maxWidth:taskView==="matrice"?1800:taskView==="tableau"?"100%":1200,margin:"0 auto"}}>
+        <div style={{padding:"20px clamp(20px,4vw,56px)",maxWidth:taskView==="matrice"?1800:(taskView==="tableau"||taskView==="notes")?"100%":1200,margin:"0 auto"}}>
           <div style={{display:"flex",gap:8,marginBottom:16}}>
             <input
               value={quickText}
@@ -1456,7 +1477,7 @@ function App() {
           </div>
 
           <div style={{display:"flex",gap:4,background:C.panel,borderRadius:999,padding:3,border:`1px solid ${C.border}`,marginBottom:16,width:"fit-content"}}>
-            {[["liste","☰ Liste"],["tableau","🗂️ Tableau"],["matrice","▦ Matrice d'Eisenhower"]].map(([k,label]) => (
+            {[["notes","📓 Carnet"],["liste","☰ Liste"],["tableau","🗂️ Tableau"],["matrice","▦ Matrice d'Eisenhower"]].map(([k,label]) => (
               <button key={k} onClick={()=>setTaskView(k)} style={{padding:"6px 14px",borderRadius:999,fontSize:13,
                 background:taskView===k?C.panel2:"transparent", color:taskView===k?C.text:C.muted, border:"none",cursor:"pointer"}}>{label}</button>
             ))}
@@ -1493,7 +1514,14 @@ function App() {
               border:`1px solid ${catFilter==="none"?C.muted:C.border2}`, background:catFilter==="none"?`${C.muted}18`:C.panel, color:catFilter==="none"?C.text:C.muted, cursor:"pointer"}}>Sans catégorie</button>
           </div>
 
-          {taskView === "liste" ? (
+          {taskView === "notes" ? (
+            <NotesBoard columns={boardColumns} notes={taskNotes} editingTaskId={editingTaskId} subtasksByParent={subtasksByParent}
+              onSaveNote={saveTaskNote} onQuickAdd={addTaskWithCategory}
+              onCycleStatus={(t)=>requestStatusCycle(t)} onTogglePriority={togglePriority} onToggleImportant={toggleImportant}
+              onSetCategory={setTaskCategoryById} onDelete={(id)=>deleteTask(id)}
+              onEditStart={(id)=>setEditingTaskId(id)} onEditSave={(t,text)=>{setTaskText(t,text);setEditingTaskId(null);}} onEditCancel={()=>setEditingTaskId(null)}
+              onAddSubtask={addSubtask} onToggleSubtask={toggleSubtask} onDeleteSubtask={deleteTask} onSaveSubtask={setTaskText} />
+          ) : taskView === "liste" ? (
             <div style={{display:"flex",flexDirection:"column",gap:18}}>
               {visibleTasks.length === 0 && <div style={{color:C.muted,fontSize:13,textAlign:"center",padding:"30px 0"}}>Aucune tâche ici.</div>}
               {groupedTasks.map((g) => {
@@ -2170,6 +2198,83 @@ function BoardCard({t,editing,dragging,onDragStart,onDragEnd,onCycleStatus,onTog
         <button onClick={onTogglePriority} title="Marquer urgent" style={{background:"none",border:"none",cursor:"pointer",fontSize:12,opacity:t.priority==="urgente"?1:0.3,padding:0}}>🔴</button>
         <button onClick={onToggleImportant} title="Marquer important" style={{background:"none",border:"none",cursor:"pointer",fontSize:12,opacity:t.important?1:0.3,padding:0}}>⭐</button>
       </div>
+    </div>
+  );
+}
+function NotesBoard({columns,notes,editingTaskId,subtasksByParent,onSaveNote,onQuickAdd,onCycleStatus,onTogglePriority,onToggleImportant,onSetCategory,onDelete,onEditStart,onEditSave,onEditCancel,onAddSubtask,onToggleSubtask,onDeleteSubtask,onSaveSubtask}) {
+  return (
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14,alignItems:"start"}}>
+      {columns.map((col) => (
+        <NotesCard key={col.key ?? "none"} col={col} note={notes[col.key ?? "none"] || ""} editingTaskId={editingTaskId} subtasksByParent={subtasksByParent}
+          onSaveNote={(content)=>onSaveNote(col.key, content)} onQuickAdd={(text)=>onQuickAdd(text, col.key)}
+          onCycleStatus={onCycleStatus} onTogglePriority={onTogglePriority} onToggleImportant={onToggleImportant}
+          onSetCategory={onSetCategory} onDelete={onDelete} onEditStart={onEditStart} onEditSave={onEditSave} onEditCancel={onEditCancel}
+          onAddSubtask={onAddSubtask} onToggleSubtask={onToggleSubtask} onDeleteSubtask={onDeleteSubtask} onSaveSubtask={onSaveSubtask} />
+      ))}
+    </div>
+  );
+}
+function NotesCard({col,note,editingTaskId,subtasksByParent,onSaveNote,onQuickAdd,onCycleStatus,onTogglePriority,onToggleImportant,onSetCategory,onDelete,onEditStart,onEditSave,onEditCancel,onAddSubtask,onToggleSubtask,onDeleteSubtask,onSaveSubtask}) {
+  const [draft, setDraft] = useState(note);
+  const [quick, setQuick] = useState("");
+  const taRef = useRef(null);
+
+  const sortedTasks = [...col.tasks].sort((a,b) => {
+    const aDone = a.status === "fait", bDone = b.status === "fait";
+    if (aDone !== bDone) return aDone ? 1 : -1;
+    return b.created_at - a.created_at;
+  });
+  const openCount = col.tasks.filter((t) => t.status !== "fait").length;
+
+  const submitQuick = () => { const v = quick.trim(); if (!v) return; onQuickAdd(v); setQuick(""); };
+
+  const handleNoteKeyDown = (e) => {
+    if (e.key !== "Enter") return;
+    const ta = e.target;
+    const pos = ta.selectionStart;
+    const value = ta.value;
+    const lineStart = value.lastIndexOf("\n", pos - 1) + 1;
+    const line = value.slice(lineStart, pos);
+    const m = line.match(/^[-•]\s+(.+)$/);
+    if (m && m[1].trim()) {
+      e.preventDefault();
+      onQuickAdd(m[1].trim());
+      const newValue = value.slice(0, lineStart) + value.slice(pos);
+      setDraft(newValue);
+      onSaveNote(newValue);
+      requestAnimationFrame(() => { if (taRef.current) { taRef.current.selectionStart = taRef.current.selectionEnd = lineStart; } });
+    }
+  };
+
+  return (
+    <div style={{background:C.panel,border:`1px solid ${C.border2}`,borderRadius:16,padding:14,display:"flex",flexDirection:"column",gap:10,
+      boxShadow:"0 1px 2px rgba(22,48,46,0.06)"}}>
+      <div style={{display:"flex",alignItems:"center",gap:7}}>
+        <span style={{width:9,height:9,borderRadius:999,background:col.color,flexShrink:0}} />
+        <span className="disp" style={{fontSize:13,fontWeight:700,color:C.text,flex:1,minWidth:0,overflowWrap:"anywhere"}}>{col.label}</span>
+        {openCount > 0 && <span className="mono" style={{fontSize:11,color:C.muted,flexShrink:0}}>{openCount} à faire</span>}
+      </div>
+
+      <textarea ref={taRef} value={draft} onChange={(e)=>setDraft(e.target.value)} onBlur={()=>onSaveNote(draft)} onKeyDown={handleNoteKeyDown}
+        placeholder="Note tes idées ici… tape « - » en début de ligne + Entrée pour en faire une tâche"
+        style={{minHeight:70,resize:"vertical",background:C.panel2,border:`1px solid ${C.border}`,borderRadius:10,padding:"8px 10px",
+          fontSize:13,color:C.text,fontFamily:"inherit",lineHeight:1.5}} />
+
+      {sortedTasks.length > 0 && (
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {sortedTasks.map((t) => (
+            <TaskRow key={t.id} t={t} editing={editingTaskId===t.id} subtasks={subtasksByParent.get(t.id)}
+              onCycleStatus={()=>onCycleStatus(t)} onTogglePriority={()=>onTogglePriority(t)} onToggleImportant={()=>onToggleImportant(t)}
+              onSetCategory={(cat)=>onSetCategory(t.id,cat)} onDelete={()=>onDelete(t.id)}
+              onEditStart={()=>onEditStart(t.id)} onEditSave={(text)=>onEditSave(t,text)} onEditCancel={onEditCancel}
+              onAddSubtask={(text)=>onAddSubtask(t.id,text)} onToggleSubtask={onToggleSubtask} onDeleteSubtask={onDeleteSubtask} onSaveSubtask={onSaveSubtask} />
+          ))}
+        </div>
+      )}
+
+      <input value={quick} onChange={(e)=>setQuick(e.target.value)} onKeyDown={(e)=>{if(e.key==="Enter") submitQuick();}}
+        placeholder="+ tâche rapide…"
+        style={{fontSize:12,background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:8,padding:"6px 9px",color:C.text}} />
     </div>
   );
 }
