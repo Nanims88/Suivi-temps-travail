@@ -1619,13 +1619,22 @@ function App() {
             const autresFreq = FREQUENCES.filter((f) => f.addMonths);
             const todayStart = isWeekend ? 0 : todayIso7;
             const orderedWeekdays = [...WEEKDAYS.slice(todayStart), ...WEEKDAYS.slice(0, todayStart)];
+            // Hebdo non faite dont le jour prévu est déjà passé cette semaine (pas encore weekend) : reportée dans la colonne d'aujourd'hui.
+            const isOverdueWeekly = (r) => r.frequency === "semaine" && !isWeekend && r.weekday < todayIso7 && !isRoutineDone(r);
             return (
               <div>
                 <div className="routines-week">
                   {orderedWeekdays.map((w) => {
                     const date = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate()+w.key);
                     const isToday = toISO(date) === todayIsoNow;
-                    const dayRoutines = filteredRoutines.filter((r) => r.frequency === "jour" || (r.frequency === "semaine" && r.weekday === w.key))
+                    const dayRoutines = filteredRoutines.filter((r) => {
+                      if (r.frequency === "jour") return true;
+                      if (r.frequency === "semaine") {
+                        if (isOverdueWeekly(r)) return isToday; // reportée : visible seulement aujourd'hui
+                        return r.weekday === w.key;
+                      }
+                      return false;
+                    })
                       .slice().sort((a,b) => {
                         const aDone = (a.frequency !== "jour" || isToday) && isRoutineDone(a);
                         const bDone = (b.frequency !== "jour" || isToday) && isRoutineDone(b);
@@ -1642,8 +1651,9 @@ function App() {
                           <div style={{fontSize:11,color:C.faint,fontStyle:"italic",textAlign:"center",padding:"14px 0",flex:1}}>Rien de prévu</div>
                         ) : dayRoutines.map((r) => {
                           const interactive = r.frequency !== "jour" || isToday;
+                          const reportedFrom = (r.frequency === "semaine" && r.weekday !== w.key) ? WEEKDAYS.find((x)=>x.key===r.weekday)?.label.toLowerCase() : null;
                           return (
-                            <RoutineMiniCard key={r.id} routine={r} done={interactive && isRoutineDone(r)} interactive={interactive}
+                            <RoutineMiniCard key={r.id} routine={r} done={interactive && isRoutineDone(r)} interactive={interactive} reportedFrom={reportedFrom}
                               subtasks={routineSubtasksByParent.get(r.id)} isSubDone={(st)=>isRoutineSubtaskDone(st,r)}
                               onCheck={()=>openRoutineCheck(r)} onUncheck={()=>uncheckRoutine(r)}
                               onEdit={()=>setRoutineEditor(r)} onDelete={()=>deleteRoutine(r.id)}
@@ -2378,7 +2388,7 @@ function RoutineRow({routine,done,subtasks,isSubDone,onCheck,onUncheck,onEdit,on
     </div>
   );
 }
-function RoutineMiniCard({routine,done,interactive=true,subtasks,isSubDone,onCheck,onUncheck,onEdit,onDelete,onAddSubtask,onToggleSubtask,onDeleteSubtask,onSaveSubtask}) {
+function RoutineMiniCard({routine,done,interactive=true,reportedFrom,subtasks,isSubDone,onCheck,onUncheck,onEdit,onDelete,onAddSubtask,onToggleSubtask,onDeleteSubtask,onSaveSubtask}) {
   const cat = routine.category ? catByKey(routine.category) : null;
   const subs = subtasks || [];
   const [expanded, setExpanded] = useState(false);
@@ -2386,7 +2396,7 @@ function RoutineMiniCard({routine,done,interactive=true,subtasks,isSubDone,onChe
   const doneCount = subs.filter((st) => isSubDone(st)).length;
   const submitSubtask = () => { const v = newSubtask.trim(); if (!v) return; onAddSubtask(v); setNewSubtask(""); };
   return (
-    <div style={{background:C.panel,border:`1px solid ${done?C.turquoise+"66":C.border2}`,borderRadius:12,padding:"7px 9px",
+    <div style={{background:C.panel,border:`1px solid ${reportedFrom?C.accent+"77":done?C.turquoise+"66":C.border2}`,borderRadius:12,padding:"7px 9px",
       display:"flex",flexDirection:"column",gap:5,opacity:interactive?1:0.6}}>
       <div style={{display:"flex",alignItems:"flex-start",gap:6}}>
         <button onClick={interactive?(done?onUncheck:onCheck):undefined}
@@ -2398,6 +2408,10 @@ function RoutineMiniCard({routine,done,interactive=true,subtasks,isSubDone,onChe
         </button>
         <span style={{fontSize:12,fontWeight:600,color:done?C.muted:C.text,textDecoration:done?"line-through":"none",flex:1,minWidth:0,overflowWrap:"anywhere"}}>{routine.text}</span>
       </div>
+      {reportedFrom && (
+        <span style={{fontSize:9,fontWeight:700,color:"#8A5D00",background:`${C.accent}20`,borderRadius:999,padding:"2px 7px",
+          marginLeft:24,width:"fit-content"}}>⏮ reporté du {reportedFrom}</span>
+      )}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingLeft:24,gap:6,flexWrap:"wrap"}}>
         {cat ? (
           <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10,color:cat.color,minWidth:0,overflow:"hidden"}}>
