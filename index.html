@@ -1649,8 +1649,16 @@ function App() {
             const autresFreq = FREQUENCES.filter((f) => f.addMonths);
             const todayStart = isWeekend ? 0 : todayIso7;
             const orderedWeekdays = [...WEEKDAYS.slice(todayStart), ...WEEKDAYS.slice(0, todayStart)];
-            // Hebdo non faite dont le jour prévu est déjà passé cette semaine (pas encore weekend) : reportée dans la colonne d'aujourd'hui.
-            const isOverdueWeekly = (r) => r.frequency === "semaine" && !isWeekend && r.weekday < todayIso7 && !isRoutineDone(r);
+            // Hebdo non faite dont le jour prévu est déjà passé cette semaine : reportée dans la colonne d'aujourd'hui.
+            // Le report reste actif jusqu'à 2 semaines (du lundi au vendredi) avant de laisser la routine repartir sur un cycle neuf.
+            const isOverdueWeekly = (r) => {
+              if (r.frequency !== "semaine" || r.weekday == null || isWeekend || todayIso7 <= r.weekday) return false;
+              if (isRoutineDone(r)) return false;
+              if (!r.last_done_at) return true; // jamais faite : on continue de la signaler
+              const todayMid = new Date(); todayMid.setHours(0,0,0,0);
+              const daysSinceDone = Math.floor((todayMid - new Date(r.last_done_at).setHours(0,0,0,0)) / 86400000);
+              return daysSinceDone <= 14; // jusqu'à 2 semaines de report avant de laisser la routine repartir sur un cycle neuf
+            };
             return (
               <div>
                 <div className="routines-week">
