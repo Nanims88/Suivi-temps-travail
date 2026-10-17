@@ -614,7 +614,12 @@ const isRoutineDone = (routine) => {
 const isRoutineOverdueToday = (r) => {
   if (r.frequency !== "semaine" || r.weekday == null) return false;
   const todayWd = (new Date().getDay()+6)%7;
-  if (todayWd > 4 || todayWd <= r.weekday) return false;
+  if (todayWd > 4) return false;
+  // Jours écoulés depuis la dernière occurrence de ce jour de routine (0 = c'est aujourd'hui son jour).
+  // Calcul cyclique (mod 7) : reste correct même quand "aujourd'hui" est dans la semaine suivante
+  // (ex. routine du vendredi, on est lundi : todayWd=0, r.weekday=4 → 3 jours, bien "en retard").
+  const daysSinceOccurrence = (todayWd - r.weekday + 7) % 7;
+  if (daysSinceOccurrence === 0) return false; // c'est son jour aujourd'hui : due normalement, pas "en retard"
   if (isRoutineDone(r)) return false;
   if (!r.last_done_at) return true;
   const todayMid = new Date(); todayMid.setHours(0,0,0,0);
