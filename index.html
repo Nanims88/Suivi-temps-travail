@@ -512,13 +512,6 @@ const sameDay = (a, b) => toISO(a) === toISO(b);
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 const toTimeInput = (ts) => { const d = new Date(ts); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 const fromTimeInput = (dateIso, hhmm) => { const [h,m] = hhmm.split(":").map(Number); const d = parseISO(dateIso); d.setHours(h,m,0,0); return d.getTime(); };
-const computeWorkedMinutes = (log) => {
-  if (!log || !log.start_ts) return 0;
-  const end = log.end_ts || Date.now();
-  let total = end - log.start_ts;
-  if (log.lunch_start_ts) { const le = log.lunch_end_ts || (log.end_ts || Date.now()); total -= Math.max(0, le - log.lunch_start_ts); }
-  return Math.max(0, Math.round(total/60000));
-};
 const elapsedSince = (ts) => fmt(Math.max(0, Math.round((Date.now()-ts)/60000)));
 const startOfWeek = (date) => { const d=new Date(date); const day=(d.getDay()+6)%7; d.setDate(d.getDate()-day); d.setHours(0,0,0,0); return d; };
 const endOfWeek = (date) => { const s=startOfWeek(date); const e=new Date(s); e.setDate(s.getDate()+6); return e; };
@@ -786,11 +779,9 @@ function App() {
   const addTask = async () => {
     const text = quickText.trim();
     if (!text) return;
-    const task = { id: uid(), text, status: "a_faire", priority: "normale", important: false, category: null, created_at: Date.now(), updated_at: Date.now() };
-    setTasks((prev) => [task, ...prev]);
     setQuickText("");
-    const { error } = await sb.from("tasks").insert(task);
-    if (error) { console.error(error); setSyncError(true); } else { showToast("Tâche ajoutée"); }
+    const ok = await addTaskWithCategory(text, null);
+    if (ok) showToast("Tâche ajoutée");
   };
   const updateTask = async (id, patch) => {
     const full = { ...patch, updated_at: Date.now() };
@@ -806,16 +797,17 @@ function App() {
   const togglePriority = (t) => updateTask(t.id, { priority: t.priority === "urgente" ? "normale" : "urgente" });
   const toggleImportant = (t) => updateTask(t.id, { important: !t.important });
   const moveTaskToQuadrant = (id, urgent, important) => updateTask(id, { priority: urgent ? "urgente" : "normale", important });
-  const setTaskCategory = (t, cat) => updateTask(t.id, { category: cat || null });
   const setTaskCategoryById = (id, cat) => updateTask(id, { category: cat || null });
+  const setTaskCategory = (t, cat) => setTaskCategoryById(t.id, cat);
   const setTaskText = (t, text) => updateTask(t.id, { text });
   const addTaskWithCategory = async (text, category) => {
     const clean = text.trim();
-    if (!clean) return;
+    if (!clean) return false;
     const task = { id: uid(), text: clean, status: "a_faire", priority: "normale", important: false, category: category || null, created_at: Date.now(), updated_at: Date.now() };
     setTasks((prev) => [task, ...prev]);
     const { error } = await sb.from("tasks").insert(task);
-    if (error) { console.error(error); setSyncError(true); }
+    if (error) { console.error(error); setSyncError(true); return false; }
+    return true;
   };
 
   /* -------- Notes libres : une fiche par catégorie, dans la vue "Carnet" -------- */
@@ -1747,13 +1739,12 @@ function App() {
               <div style={{fontSize:13,maxWidth:380,margin:"0 auto"}}>Ajoute tes tâches récurrentes — sauvegarde hebdo, bilan mensuel, nettoyage du poste — pour ne plus avoir à y penser.</div>
             </div>
           ) : (() => {
-            const todayIso7 = (new Date().getDay()+6)%7; // 0=Lun..6=Dim
-            const isWeekend = todayIso7 > 4;
+            const isWeekend = todayWd > 4; // todayWd (0=Lun..6=Dim) calculé une fois au niveau de App()
             let weekStart = startOfWeek(new Date());
             if (isWeekend) weekStart = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate()+7); // we → semaine à venir
             const todayIsoNow = toISO(new Date());
             const autresFreq = FREQUENCES.filter((f) => f.addMonths);
-            const todayStart = isWeekend ? 0 : todayIso7;
+            const todayStart = isWeekend ? 0 : todayWd;
             const orderedWeekdays = [...WEEKDAYS.slice(todayStart), ...WEEKDAYS.slice(0, todayStart)];
             return (
               <div>
