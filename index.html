@@ -2293,7 +2293,7 @@ function MatrixCard({t,editing,dragging,onDragStart,onDragEnd,onCycleStatus,onDe
         cursor:"grab",opacity:dragging?0.4:1}}>
       <div style={{display:"flex",alignItems:"center",gap:8}}>
         <button onClick={onCycleStatus} title="Changer le statut" style={{
-          width:16,height:16,borderRadius:999,border:`2px solid ${s.color}`,background:isDone?s.color:"transparent",
+          width:16,height:16,borderRadius:999,border:`2.5px solid ${s.color}`,background:isDone?s.color:`${s.color}12`,
           display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",padding:0}}>
           {isDone && <span style={{color:"#16302E",fontSize:9,lineHeight:1,fontWeight:700}}>✓</span>}
         </button>
@@ -2338,7 +2338,7 @@ function BoardCard({t,editing,dragging,onDragStart,onDragEnd,onCycleStatus,onTog
         cursor:"grab",opacity:dragging?0.4:1}}>
       <div style={{display:"flex",alignItems:"center",gap:8}}>
         <button onClick={onCycleStatus} title="Changer le statut" style={{
-          width:16,height:16,borderRadius:999,border:`2px solid ${s.color}`,background:isDone?s.color:"transparent",
+          width:16,height:16,borderRadius:999,border:`2.5px solid ${s.color}`,background:isDone?s.color:`${s.color}12`,
           display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",padding:0}}>
           {isDone && <span style={{color:"#16302E",fontSize:9,lineHeight:1,fontWeight:700}}>✓</span>}
         </button>
