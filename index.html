@@ -472,7 +472,37 @@ const CATS = [
       "Sollicitation — Appro", "Sollicitation — Compta", "Sollicitation — Achats", "Sollicitation — Direction", "Sollicitation — Réception", "Sollicitation — Logistique", "Sollicitation — ADV"] },
 ];
 const catByKey = (k) => CATS.find((c) => c.key === k);
-const CATEGORY_COLUMNS = [{ key: null, label: "Sans catégorie", color: C.muted }, ...CATS.map((c) => ({ key: c.key, label: c.label, color: c.color }))];
+let CATEGORY_COLUMNS = [{ key: null, label: "Sans catégorie", color: C.muted }, ...CATS.map((c) => ({ key: c.key, label: c.label, color: c.color }))];
+function rebuildCategoryColumns() {
+  CATEGORY_COLUMNS = [{ key: null, label: "Sans catégorie", color: C.muted }, ...CATS.map((c) => ({ key: c.key, label: c.label, color: c.color }))];
+}
+const GROUPS = [
+  { key: "production", label: "Production" },
+  { key: "indirect", label: "Indirect" },
+  { key: "projet", label: "Projet" },
+];
+const slugifyCatKey = (label) => {
+  const base = (label || "").toString().trim().toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "") || "categorie";
+  if (!CATS.some((c) => c.key === base)) return base;
+  let i = 2; while (CATS.some((c) => c.key === `${base}${i}`)) i++;
+  return `${base}${i}`;
+};
+function mergeCategoryOverrides(rows) {
+  (rows || []).forEach((row) => {
+    const existing = CATS.find((c) => c.key === row.key);
+    if (existing) {
+      if (row.label) existing.label = row.label;
+      if (row.group) existing.group = row.group;
+      if (row.color) existing.color = row.color;
+      if (Array.isArray(row.subs) && row.subs.length) existing.subs = row.subs;
+    } else {
+      CATS.push({ key: row.key, label: row.label, group: row.group || "indirect", color: row.color || "#8764B8", subs: Array.isArray(row.subs) ? row.subs : [] });
+    }
+  });
+  rebuildCategoryColumns();
+}
 
 const PRESETS = [
   { label: "Vérif MAJ veille", cat: "tarifs", sub: "Vérification MAJ tarifs (veille)" },
@@ -706,6 +736,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [toast, setToast] = useState(null);
   const [syncError, setSyncError] = useState(false);
+  const [catsVersion, setCatsVersion] = useState(0);
 
   const [selCat, setSelCat] = useState(null);
   const [entryDate, setEntryDate] = useState(() => toISO(new Date()));
@@ -747,7 +778,7 @@ function App() {
   const loadAll = useCallback(async () => {
     setLoaded(false);
     try {
-      const [e, s, d, p, tk, rt, tn] = await Promise.all([
+      const [e, s, d, p, tk, rt, tn, cg] = await Promise.all([
         sb.from("entries").select("*").order("date", { ascending: false }),
         sb.from("app_settings").select("*").eq("id", 1).maybeSingle(),
         sb.from("day_logs").select("*"),
@@ -755,7 +786,10 @@ function App() {
         sb.from("tasks").select("*").order("created_at", { ascending: false }),
         sb.from("routines").select("*").order("created_at", { ascending: false }),
         sb.from("task_notes").select("*"),
+        sb.from("categories").select("*"),
       ]);
+      mergeCategoryOverrides(cg.data);
+      setCatsVersion((v) => v + 1);
       setEntries(e.data || []);
       setSettings(s.data ? { weeklyHours: Number(s.data.weekly_hours) } : { weeklyHours: 35 });
       const dl = {};
@@ -776,6 +810,51 @@ function App() {
 
   useEffect(() => { loadAll(); }, [loadAll]);
   useEffect(() => { const id = setInterval(() => setTick((t) => t+1), 60000); return () => clearInterval(id); }, []);
+
+  /* -------- gestion des catégories -------- */
+  const saveCategoryOverride = async (cat, extra) => {
+    const { error } = await sb.from("categories").upsert({
+      key: cat.key, label: cat.label, group: cat.group, color: cat.color, subs: cat.subs,
+      updated_at: Date.now(), ...extra,
+    });
+    if (error) { console.error(error); setSyncError(true); }
+  };
+  const updateCategory = async (key, patch) => {
+    const cat = catByKey(key);
+    if (!cat) return;
+    Object.assign(cat, patch);
+    rebuildCategoryColumns();
+    setCatsVersion((v) => v + 1);
+    await saveCategoryOverride(cat);
+  };
+  const addSubToCategory = async (key, subText) => {
+    const cat = catByKey(key);
+    const clean = (subText || "").trim();
+    if (!cat || !clean || cat.subs.includes(clean)) return;
+    cat.subs = [...cat.subs, clean];
+    setCatsVersion((v) => v + 1);
+    await saveCategoryOverride(cat);
+    showToast("Sous-catégorie ajoutée");
+  };
+  const renameSubOfCategory = async (key, oldSub, newSub) => {
+    const cat = catByKey(key);
+    const clean = (newSub || "").trim();
+    if (!cat || !clean || oldSub === clean) return;
+    cat.subs = cat.subs.map((s) => (s === oldSub ? clean : s));
+    setCatsVersion((v) => v + 1);
+    await saveCategoryOverride(cat);
+  };
+  const addNewCategory = async (label, color, group) => {
+    const clean = (label || "").trim();
+    if (!clean) return;
+    const key = slugifyCatKey(clean);
+    const cat = { key, label: clean, group: group || "indirect", color: color || "#8764B8", subs: [] };
+    CATS.push(cat);
+    rebuildCategoryColumns();
+    setCatsVersion((v) => v + 1);
+    await saveCategoryOverride(cat, { created_at: Date.now() });
+    showToast("Catégorie ajoutée");
+  };
 
   /* -------- writes -------- */
   const addEntry = async (minutes) => {
@@ -1286,6 +1365,9 @@ function App() {
             </div>
             <div style={{fontSize:11,color:C.faint,marginTop:6}}>Le CSV s'ouvre dans Excel pour analyse. Le JSON est une sauvegarde complète, réimportable ici en cas de besoin.</div>
           </div>
+
+          <CategoriesSettings cats={CATS} onUpdateCategory={updateCategory} onAddSub={addSubToCategory}
+            onRenameSub={renameSubOfCategory} onAddCategory={addNewCategory} />
         </div>
       )}
 
@@ -1964,6 +2046,89 @@ function TabBtn({active,onClick,children}) {
   return <button onClick={onClick} style={{padding:"8px 16px",borderRadius:999,fontSize:13,fontWeight:600,transition:"all .15s ease",
     background:active?"#FFFFFF":"rgba(255,255,255,0.14)", border:`1px solid ${active?"#FFFFFF":"rgba(255,255,255,0.3)"}`,
     color:active?C.abysse:"#FFFFFF", cursor:"pointer"}}>{children}</button>;
+}
+function CategoriesSettings({cats,onUpdateCategory,onAddSub,onRenameSub,onAddCategory}) {
+  const [newLabel,setNewLabel] = useState("");
+  const [newColor,setNewColor] = useState("#8764B8");
+  const [newGroup,setNewGroup] = useState("indirect");
+  const [subDraft,setSubDraft] = useState({});
+  const [editingKey,setEditingKey] = useState(null);
+  const [labelDraft,setLabelDraft] = useState("");
+  const [editingSub,setEditingSub] = useState(null);
+  const [subEditDraft,setSubEditDraft] = useState("");
+
+  const submitNewCategory = () => {
+    if (!newLabel.trim()) return;
+    onAddCategory(newLabel, newColor, newGroup);
+    setNewLabel(""); setNewColor("#8764B8"); setNewGroup("indirect");
+  };
+
+  return (
+    <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${C.border2}`}}>
+      <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:8,textTransform:"uppercase",letterSpacing:0.3}}>Catégories</div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {cats.map((c) => (
+          <div key={c.key} style={{border:`1px solid ${C.border2}`,borderRadius:12,padding:"8px 10px",background:C.panel2}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+              <input type="color" value={c.color} title="Couleur"
+                onChange={(e)=>onUpdateCategory(c.key,{color:e.target.value})}
+                style={{width:26,height:26,border:"none",borderRadius:8,cursor:"pointer",padding:0,background:"transparent"}} />
+              {editingKey===c.key ? (
+                <input autoFocus value={labelDraft} onChange={(e)=>setLabelDraft(e.target.value)}
+                  onKeyDown={(e)=>{
+                    if(e.key==="Enter"){ if(labelDraft.trim()&&labelDraft!==c.label) onUpdateCategory(c.key,{label:labelDraft.trim()}); setEditingKey(null); }
+                    if(e.key==="Escape") setEditingKey(null);
+                  }}
+                  onBlur={()=>{ if(labelDraft.trim()&&labelDraft!==c.label) onUpdateCategory(c.key,{label:labelDraft.trim()}); setEditingKey(null); }}
+                  style={{fontSize:13,fontWeight:600,color:C.text,background:C.panel,border:`1px solid ${C.border2}`,borderRadius:8,padding:"4px 8px"}} />
+              ) : (
+                <button onClick={()=>{setEditingKey(c.key);setLabelDraft(c.label);}} title="Cliquer pour renommer"
+                  style={{fontSize:13,fontWeight:600,color:C.text,background:"transparent",border:"none",cursor:"pointer",padding:"4px 2px"}}>{c.label} ✎</button>
+              )}
+              <select value={c.group} onChange={(e)=>onUpdateCategory(c.key,{group:e.target.value})}
+                style={{fontSize:11,color:C.muted,background:C.panel,border:`1px solid ${C.border2}`,borderRadius:8,padding:"3px 6px",cursor:"pointer"}}>
+                {GROUPS.map((g)=><option key={g.key} value={g.key}>{g.label}</option>)}
+              </select>
+            </div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>
+              {c.subs.map((s) => {
+                const subId = `${c.key}::${s}`;
+                return editingSub===subId ? (
+                  <input key={s} autoFocus value={subEditDraft} onChange={(e)=>setSubEditDraft(e.target.value)}
+                    onKeyDown={(e)=>{
+                      if(e.key==="Enter"){ if(subEditDraft.trim()&&subEditDraft!==s) onRenameSub(c.key,s,subEditDraft.trim()); setEditingSub(null); }
+                      if(e.key==="Escape") setEditingSub(null);
+                    }}
+                    onBlur={()=>{ if(subEditDraft.trim()&&subEditDraft!==s) onRenameSub(c.key,s,subEditDraft.trim()); setEditingSub(null); }}
+                    style={{fontSize:11,color:C.text,background:C.panel,border:`1px solid ${C.border2}`,borderRadius:999,padding:"3px 8px"}} />
+                ) : (
+                  <button key={s} onClick={()=>{setEditingSub(subId);setSubEditDraft(s);}} title="Cliquer pour renommer"
+                    style={{fontSize:11,color:C.muted,background:C.panel,border:`1px solid ${C.border}`,borderRadius:999,padding:"3px 8px",cursor:"pointer"}}>{s}</button>
+                );
+              })}
+              <input placeholder="+ sous-catégorie…" value={subDraft[c.key]||""}
+                onChange={(e)=>setSubDraft((d)=>({...d,[c.key]:e.target.value}))}
+                onKeyDown={(e)=>{ if(e.key==="Enter"){ onAddSub(c.key,subDraft[c.key]); setSubDraft((d)=>({...d,[c.key]:""})); } }}
+                style={{fontSize:11,width:150,background:"transparent",border:`1px dashed ${C.border2}`,borderRadius:999,padding:"3px 8px",color:C.text}} />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginTop:12}}>
+        <input type="color" value={newColor} onChange={(e)=>setNewColor(e.target.value)}
+          style={{width:26,height:26,border:"none",borderRadius:8,cursor:"pointer",padding:0,background:"transparent"}} />
+        <input placeholder="Nouvelle catégorie…" value={newLabel} onChange={(e)=>setNewLabel(e.target.value)}
+          onKeyDown={(e)=>{ if(e.key==="Enter") submitNewCategory(); }}
+          style={{fontSize:12,background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:12,padding:"6px 10px",color:C.text}} />
+        <select value={newGroup} onChange={(e)=>setNewGroup(e.target.value)}
+          style={{fontSize:12,color:C.muted,background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:12,padding:"6px 8px",cursor:"pointer"}}>
+          {GROUPS.map((g)=><option key={g.key} value={g.key}>{g.label}</option>)}
+        </select>
+        <button onClick={submitNewCategory}
+          style={{fontSize:12,fontWeight:600,color:"#fff",background:C.abysse,border:"none",borderRadius:12,padding:"6px 14px",cursor:"pointer"}}>+ Ajouter la catégorie</button>
+      </div>
+    </div>
+  );
 }
 function Section({title,subtitle,children}) {
   return <div style={{marginBottom:18}}>
