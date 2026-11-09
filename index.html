@@ -771,6 +771,7 @@ function App() {
   const [routineEditor, setRoutineEditor] = useState(null);
   const [routineCheck, setRoutineCheck] = useState(null);
   const [routineCheckMin, setRoutineCheckMin] = useState(0);
+  const [routineCheckDate, setRoutineCheckDate] = useState(() => toISO(new Date()));
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 1600); };
 
@@ -870,7 +871,7 @@ function App() {
   const addRawEntry = async (catKey, subLabel, minutes, opts = {}) => {
     if (!catKey || !subLabel || !minutes) return;
     const cat = catByKey(catKey);
-    const entry = { id: uid(), date: toISO(new Date()), cat: catKey, sub: subLabel, minutes, subject: opts.subject || "", comment: opts.comment || "", status: "Terminé", created_at: Date.now() };
+    const entry = { id: uid(), date: opts.date || toISO(new Date()), cat: catKey, sub: subLabel, minutes, subject: opts.subject || "", comment: opts.comment || "", status: "Terminé", created_at: Date.now() };
     setEntries((prev) => [entry, ...prev]);
     const { error } = await sb.from("entries").insert(entry);
     if (error) { console.error(error); setSyncError(true); } else { showToast(opts.toast || `+ ${fmt(minutes)} · ${cat.label} (écart affecté)`); }
@@ -981,17 +982,19 @@ function App() {
     const { error } = await sb.from("routines").delete().eq("id", id);
     if (error) setSyncError(true);
   };
-  const openRoutineCheck = (r) => { setRoutineCheckMin(r.default_minutes || 15); setRoutineCheck(r); };
+  const openRoutineCheck = (r) => { setRoutineCheckMin(r.default_minutes || 15); setRoutineCheckDate(toISO(new Date())); setRoutineCheck(r); };
   const uncheckRoutine = (r) => updateRoutine(r.id, { last_done_at: null });
   const confirmRoutineCheck = () => {
     if (!routineCheck) return;
     const r = routineCheck;
+    const isToday = routineCheckDate === toISO(new Date());
+    const doneAt = isToday ? Date.now() : new Date(routineCheckDate + "T12:00:00").getTime();
     if (routineCheckMin > 0) {
-      addRawEntry(r.category, r.sub, routineCheckMin, { subject: r.text, comment: "Routine", toast: `✓ ${r.text} · +${fmt(routineCheckMin)}` });
+      addRawEntry(r.category, r.sub, routineCheckMin, { date: routineCheckDate, subject: r.text, comment: "Routine", toast: `✓ ${r.text} · +${fmt(routineCheckMin)}${isToday?"":` (${frDate(doneAt)})`}` });
     } else {
       showToast(`✓ ${r.text}`);
     }
-    updateRoutine(r.id, { last_done_at: Date.now() });
+    updateRoutine(r.id, { last_done_at: doneAt });
     setRoutineCheck(null);
   };
 
@@ -1975,6 +1978,9 @@ function App() {
           <div style={{background:C.panel,borderRadius:18,width:"min(420px,94vw)",overflow:"hidden"}} onClick={(e)=>e.stopPropagation()}>
             <div style={{background:C.abysse,color:"#fff",padding:"14px 18px",fontWeight:700}}>✓ {routineCheck.text}</div>
             <div style={{padding:18}}>
+              <div style={{fontSize:12,color:C.muted,marginBottom:6}}>À quelle date ?</div>
+              <input type="date" value={routineCheckDate} max={toISO(new Date())} onChange={(e)=>setRoutineCheckDate(e.target.value||toISO(new Date()))} className="mono"
+                style={{padding:"6px 8px",borderRadius:12,border:`1px solid ${routineCheckDate!==toISO(new Date())?C.accent:C.border2}`,fontSize:13,color:C.text,marginBottom:14}} />
               <div style={{fontSize:12,color:C.muted,marginBottom:8}}>Combien de temps y as-tu passé ?</div>
               <div style={{display:"flex",gap:8,marginBottom:18,flexWrap:"wrap"}}>
                 {DURATIONS.map((m) => (
