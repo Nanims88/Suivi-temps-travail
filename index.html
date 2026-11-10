@@ -2965,7 +2965,7 @@ function TimeClock({log,onChange,todayTotal,onLogEcart}) {
       {l.start_ts ? (
         <div style={{display:"flex",alignItems:"center",gap:6,border:"1px solid #57CBBB55",background:"#57CBBB18",borderRadius:999,padding:"6px 8px"}}>
           <span style={{fontSize:11,color:C.faint}}>Début journée</span>
-          <input type="time" value={toTimeInput(l.start_ts)} onChange={(e)=>editField("start_ts",e.target.value)} className="mono" style={{background:"transparent",border:"none",color:C.abysse,fontSize:13,width:62}} />
+          <input type="time" value={toTimeInput(l.start_ts)} onChange={(e)=>editField("start_ts",e.target.value)} className="mono" style={{background:"transparent",border:"none",color:C.abysse,fontSize:13,width:88}} />
           <button onClick={()=>clearField("start_ts")} style={{background:"none",border:"none",cursor:"pointer",color:C.faint}}>✕</button>
         </div>
       ) : manualField==="start_ts" ? (
@@ -2991,7 +2991,7 @@ function TimeClock({log,onChange,todayTotal,onLogEcart}) {
       {l.start_ts && (l.end_ts ? (
         <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${C.abysse}55`,background:`${C.abysse}12`,borderRadius:999,padding:"6px 8px"}}>
           <span style={{fontSize:11,color:C.faint}}>Fin de journée</span>
-          <input type="time" value={toTimeInput(l.end_ts)} onChange={(e)=>editField("end_ts",e.target.value)} className="mono" style={{background:"transparent",border:"none",color:C.abysse,fontSize:13,width:62}} />
+          <input type="time" value={toTimeInput(l.end_ts)} onChange={(e)=>editField("end_ts",e.target.value)} className="mono" style={{background:"transparent",border:"none",color:C.abysse,fontSize:13,width:88}} />
           <button onClick={()=>clearField("end_ts")} style={{background:"none",border:"none",cursor:"pointer",color:C.faint}}>✕</button>
         </div>
       ) : manualField==="end_ts" ? (
@@ -3011,10 +3011,10 @@ function TimeClock({log,onChange,todayTotal,onLogEcart}) {
       <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
         {pauses.map((p,idx) => (
           <div key={idx} style={{display:"flex",alignItems:"center",gap:4,border:"1px solid #57CBBB55",background:"#57CBBB15",borderRadius:999,padding:"4px 6px",fontSize:11}}>
-            <input type="time" value={toTimeInput(p.start)} onChange={(e)=>editPause(idx,"start",e.target.value)} className="mono" style={{background:"transparent",border:"none",color:C.abysse,fontSize:11,width:52}} />
+            <input type="time" value={toTimeInput(p.start)} onChange={(e)=>editPause(idx,"start",e.target.value)} className="mono" style={{background:"transparent",border:"none",color:C.abysse,fontSize:11,width:76}} />
             <span style={{color:C.faint}}>→</span>
             {p.end ? (
-              <input type="time" value={toTimeInput(p.end)} onChange={(e)=>editPause(idx,"end",e.target.value)} className="mono" style={{background:"transparent",border:"none",color:C.abysse,fontSize:11,width:52}} />
+              <input type="time" value={toTimeInput(p.end)} onChange={(e)=>editPause(idx,"end",e.target.value)} className="mono" style={{background:"transparent",border:"none",color:C.abysse,fontSize:11,width:76}} />
             ) : <span className="mono" style={{color:C.abysse}}>en cours</span>}
             <button onClick={()=>deletePause(idx)} style={{background:"none",border:"none",cursor:"pointer",color:C.faint,padding:"0 2px"}}>✕</button>
           </div>
