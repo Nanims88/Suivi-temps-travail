@@ -1513,7 +1513,7 @@ function App() {
         <div style={{position:"sticky",top:20,display:"flex",flexDirection:"column",gap:16,maxHeight:"calc(100vh - 40px)",overflowY:"auto"}}>
           {urgentImportantTasks.length > 0 && (
             <Panel title="🔴⭐ Urgent & important">
-              <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:240,overflowY:"auto"}}>
+              <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:440,overflowY:"auto"}}>
                 {urgentImportantTasks.map((t) => (
                   <TaskRow key={t.id} t={t} editing={editingTaskId===t.id} subtasks={subtasksByParent.get(t.id)} compact
                     onCycleStatus={()=>requestStatusCycle(t)} onTogglePriority={()=>togglePriority(t)} onToggleImportant={()=>toggleImportant(t)}
@@ -1527,7 +1527,7 @@ function App() {
 
           <Panel title={entryDate===todayIso ? `Aujourd'hui — ${fmt(todayTotal)}` : `${parseISO(entryDate).toLocaleDateString("fr-FR",{weekday:"long",day:"2-digit",month:"long"})} — ${fmt(entryDateTotal)}`}>
             {entryDateEntries.length===0 ? <div style={{color:C.faint,fontSize:13}}>Aucune saisie pour l'instant.</div> :
-              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:220,overflowY:"auto"}}>
                 {entryDateEntries.map((e) => (
                   <EntryRow key={e.id} e={e} narrow onDelete={()=>deleteEntry(e.id)} onToggle={()=>toggleStatus(e.id)}
                     editing={editingId===e.id} onEditStart={()=>setEditingId(e.id)} onEditCancel={()=>setEditingId(null)} onEditSave={(patch)=>updateEntry(e.id,patch)} />
