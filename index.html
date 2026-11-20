@@ -1375,7 +1375,7 @@ function App() {
       )}
 
       {tab === "saisie" && (
-        <div style={{padding:20,maxWidth:1500,margin:"0 auto"}}>
+        <div style={{padding:"20px clamp(20px,3vw,48px)",maxWidth:"100%",margin:"0 auto"}}>
         <div className="saisie-layout">
         <div>
           <TimeClock log={todayLog} onChange={(l)=>persistDayLog(todayIso,l)} todayTotal={todayTotal} onLogEcart={addRawEntry} />
@@ -1697,7 +1697,7 @@ function App() {
       )}
 
       {tab === "taches" && (
-        <div style={{padding:"16px clamp(20px,4vw,56px)",maxWidth:taskView==="matrice"?1800:(taskView==="tableau"||taskView==="notes")?"100%":1200,margin:"0 auto"}}>
+        <div style={{padding:"16px clamp(20px,4vw,56px)",maxWidth:"100%",margin:"0 auto"}}>
           <div style={{display:"flex",gap:8,marginBottom:12}}>
             <input
               value={quickText}
