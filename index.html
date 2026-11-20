@@ -563,6 +563,7 @@ const fmt = (min) => { if (!min) return "0 min"; if (min < 60) return `${min} mi
 const sameDay = (a, b) => toISO(a) === toISO(b);
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 const toTimeInput = (ts) => { const d = new Date(ts); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const hhmmToMinutes = (hhmm) => { const [h,m] = (hhmm||"0:0").split(":").map(Number); return (h||0)*60 + (m||0); };
 const fromTimeInput = (dateIso, hhmm) => { const [h,m] = hhmm.split(":").map(Number); const d = parseISO(dateIso); d.setHours(h,m,0,0); return d.getTime(); };
 const elapsedSince = (ts) => fmt(Math.max(0, Math.round((Date.now()-ts)/60000)));
 const startOfWeek = (date) => { const d=new Date(date); const day=(d.getDay()+6)%7; d.setDate(d.getDate()-day); d.setHours(0,0,0,0); return d; };
@@ -718,7 +719,7 @@ const aggregate = (list) => {
 function App() {
   const [loaded, setLoaded] = useState(false);
   const [entries, setEntries] = useState([]);
-  const [settings, setSettings] = useState({ weeklyHours: 35 });
+  const [settings, setSettings] = useState({ weeklyHours: 35, dayStart: "08:30", dayEnd: "17:00" });
   const [dayLogs, setDayLogs] = useState({});
   const [projects, setProjects] = useState([]);
   const [newProject, setNewProject] = useState("");
@@ -792,7 +793,7 @@ function App() {
       mergeCategoryOverrides(cg.data);
       setCatsVersion((v) => v + 1);
       setEntries(e.data || []);
-      setSettings(s.data ? { weeklyHours: Number(s.data.weekly_hours) } : { weeklyHours: 35 });
+      setSettings(s.data ? { weeklyHours: Number(s.data.weekly_hours), dayStart: s.data.day_start_time || "08:30", dayEnd: s.data.day_end_time || "17:00" } : { weeklyHours: 35, dayStart: "08:30", dayEnd: "17:00" });
       const dl = {};
       (d.data || []).forEach((row) => { dl[row.date] = row; });
       setDayLogs(dl);
@@ -1116,9 +1117,10 @@ function App() {
     setEditingId(null);
   };
 
-  const persistSettings = async (s) => {
-    setSettings(s);
-    const { error } = await sb.from("app_settings").upsert({ id: 1, weekly_hours: s.weeklyHours });
+  const persistSettings = async (patch) => {
+    const next = { ...settings, ...patch };
+    setSettings(next);
+    const { error } = await sb.from("app_settings").upsert({ id: 1, weekly_hours: next.weeklyHours, day_start_time: next.dayStart, day_end_time: next.dayEnd });
     if (error) setSyncError(true);
   };
 
@@ -1347,6 +1349,12 @@ function App() {
             <span style={{fontSize:13,color:C.muted}}>Temps théorique hebdo (h)</span>
             <input type="number" value={settings.weeklyHours} onChange={(e)=>persistSettings({weeklyHours:Number(e.target.value)||0})}
               className="mono" style={{width:64,background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:12,padding:"6px 8px",color:C.text}} />
+            <span style={{fontSize:13,color:C.muted}}>Journée type</span>
+            <input type="time" value={settings.dayStart} onChange={(e)=>persistSettings({dayStart:e.target.value||"08:30"})}
+              className="mono" style={{width:88,background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:12,padding:"6px 8px",color:C.text}} />
+            <span style={{fontSize:13,color:C.faint}}>→</span>
+            <input type="time" value={settings.dayEnd} onChange={(e)=>persistSettings({dayEnd:e.target.value||"17:00"})}
+              className="mono" style={{width:88,background:C.panel2,border:`1px solid ${C.border2}`,borderRadius:12,padding:"6px 8px",color:C.text}} />
             <span className="mono" style={{fontSize:12,color:C.faint}}>{entries.length} saisie(s) en base</span>
             <div style={{flex:1}} />
             <button onClick={resetAll} style={{fontSize:12,color:"#A33327",background:"transparent",border:"1px solid #A3332755",borderRadius:12,padding:"6px 10px",cursor:"pointer"}}>Réinitialiser</button>
@@ -1853,8 +1861,14 @@ function App() {
             const autresFreq = FREQUENCES.filter((f) => f.addMonths);
             const todayStart = isWeekend ? 0 : todayWd;
             const orderedWeekdays = [...WEEKDAYS.slice(todayStart), ...WEEKDAYS.slice(0, todayStart)];
+            const windowMinutes = Math.max(30, hhmmToMinutes(settings.dayEnd) - hhmmToMinutes(settings.dayStart));
+            const TIMETABLE_HEIGHT = 440;
+            const pxPerMinute = TIMETABLE_HEIGHT / windowMinutes;
             return (
               <div>
+                <div style={{fontSize:12,color:C.muted,marginBottom:12}}>
+                  🗓️ Emploi du temps basé sur une journée de {settings.dayStart} à {settings.dayEnd} ({fmt(windowMinutes)}) — réglable dans ⚙️
+                </div>
                 <div className="routines-week">
                   {orderedWeekdays.map((w) => {
                     const date = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate()+w.key);
@@ -1872,6 +1886,8 @@ function App() {
                         const bDone = (b.frequency !== "jour" || isToday) && isRoutineDone(b);
                         return aDone - bDone;
                       });
+                    const usedMinutes = dayRoutines.reduce((s,r) => s + (r.default_minutes||0), 0);
+                    const remainingMinutes = windowMinutes - usedMinutes;
                     return (
                       <div key={w.key} style={{background:isToday?`${C.abysse}0d`:C.panel2,border:`1px solid ${isToday?C.abysse+"55":C.border}`,
                         borderRadius:16,padding:10,display:"flex",flexDirection:"column",gap:7,minHeight:150}}>
@@ -1879,20 +1895,29 @@ function App() {
                           <span className="disp" style={{fontSize:12,fontWeight:700,color:isToday?C.abysse:C.text}}>{w.short}</span>
                           <span className="mono" style={{fontSize:10,color:isToday?C.abysse:C.muted}}>{date.toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"})}</span>
                         </div>
-                        {dayRoutines.length === 0 ? (
-                          <div style={{fontSize:11,color:C.faint,fontStyle:"italic",textAlign:"center",padding:"14px 0",flex:1}}>Rien de prévu</div>
-                        ) : dayRoutines.map((r) => {
+                        {dayRoutines.map((r) => {
                           const interactive = r.frequency !== "jour" || isToday;
                           const reportedFrom = (r.frequency === "semaine" && r.weekday !== w.key) ? WEEKDAYS.find((x)=>x.key===r.weekday)?.label.toLowerCase() : null;
+                          const blockHeight = Math.max(44, Math.round((r.default_minutes||0) * pxPerMinute));
                           return (
                             <RoutineMiniCard key={r.id} routine={r} done={interactive && isRoutineDone(r)} interactive={interactive} reportedFrom={reportedFrom}
-                              subtasks={routineSubtasksByParent.get(r.id)} isSubDone={(st)=>isRoutineSubtaskDone(st,r)}
+                              subtasks={routineSubtasksByParent.get(r.id)} isSubDone={(st)=>isRoutineSubtaskDone(st,r)} minHeight={blockHeight}
                               onCheck={()=>openRoutineCheck(r)} onUncheck={()=>uncheckRoutine(r)}
                               onEdit={()=>setRoutineEditor(r)} onDelete={()=>deleteRoutine(r.id)}
                               onAddSubtask={(text)=>addRoutineSubtask(r.id,text)} onToggleSubtask={(st)=>toggleRoutineSubtask(st,r)}
                               onDeleteSubtask={deleteRoutine} onSaveSubtask={(st,text)=>updateRoutine(st.id,{text})} />
                           );
                         })}
+                        {remainingMinutes > 0 ? (
+                          <div style={{minHeight:Math.max(30,Math.round(remainingMinutes*pxPerMinute)),display:"flex",alignItems:"center",justifyContent:"center",
+                            border:`1px dashed ${C.border2}`,borderRadius:12,color:C.faint,fontSize:11,fontStyle:"italic",textAlign:"center",padding:"6px 8px",boxSizing:"border-box"}}>
+                            {dayRoutines.length===0 ? "Rien de prévu — " : ""}{fmt(remainingMinutes)} disponible
+                          </div>
+                        ) : dayRoutines.length > 0 && (
+                          <div style={{padding:"6px 8px",borderRadius:12,background:"#A3332715",color:"#A33327",fontSize:11,fontWeight:600,textAlign:"center"}}>
+                            ⚠️ Journée chargée (+{fmt(-remainingMinutes)})
+                          </div>
+                        )}
                         <button onClick={()=>setRoutineEditor({frequency:"semaine",weekday:w.key})} style={{marginTop:"auto",fontSize:11,color:C.abysse,
                           background:"transparent",border:`1px dashed ${C.border2}`,borderRadius:10,padding:"6px 8px",cursor:"pointer"}}>+ ajouter</button>
                       </div>
@@ -2727,7 +2752,7 @@ function RoutineRow({routine,done,subtasks,isSubDone,onCheck,onUncheck,onEdit,on
     </div>
   );
 }
-function RoutineMiniCard({routine,done,interactive=true,reportedFrom,subtasks,isSubDone,onCheck,onUncheck,onEdit,onDelete,onAddSubtask,onToggleSubtask,onDeleteSubtask,onSaveSubtask}) {
+function RoutineMiniCard({routine,done,interactive=true,reportedFrom,subtasks,isSubDone,minHeight,onCheck,onUncheck,onEdit,onDelete,onAddSubtask,onToggleSubtask,onDeleteSubtask,onSaveSubtask}) {
   const cat = routine.category ? catByKey(routine.category) : null;
   const subs = subtasks || [];
   const [expanded, setExpanded] = useState(false);
@@ -2736,7 +2761,7 @@ function RoutineMiniCard({routine,done,interactive=true,reportedFrom,subtasks,is
   const submitSubtask = () => { const v = newSubtask.trim(); if (!v) return; onAddSubtask(v); setNewSubtask(""); };
   return (
     <div style={{background:C.panel,border:`1px solid ${reportedFrom?C.accent+"77":done?C.turquoise+"66":C.border2}`,borderRadius:12,padding:"7px 9px",
-      display:"flex",flexDirection:"column",gap:5,opacity:interactive?1:0.6}}>
+      display:"flex",flexDirection:"column",gap:5,opacity:interactive?1:0.6,...(minHeight?{minHeight,boxSizing:"border-box"}:null)}}>
       <div style={{display:"flex",alignItems:"flex-start",gap:6}}>
         <button onClick={interactive?(done?onUncheck:onCheck):undefined}
           title={!interactive?"Routine quotidienne — à cocher depuis la colonne d'aujourd'hui":done?"Remettre à faire":"Marquer comme fait"} style={{
@@ -2752,12 +2777,15 @@ function RoutineMiniCard({routine,done,interactive=true,reportedFrom,subtasks,is
           marginLeft:24,width:"fit-content"}}>⏮ reporté du {reportedFrom}</span>
       )}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingLeft:24,gap:6,flexWrap:"wrap"}}>
-        {cat ? (
-          <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10,color:cat.color,minWidth:0,overflow:"hidden"}}>
-            <span style={{width:6,height:6,borderRadius:999,background:cat.color,flexShrink:0}} />
-            <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cat.label}</span>
-          </span>
-        ) : <span />}
+        <span style={{display:"inline-flex",alignItems:"center",gap:6,minWidth:0,overflow:"hidden"}}>
+          {cat && (
+            <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10,color:cat.color,minWidth:0,overflow:"hidden"}}>
+              <span style={{width:6,height:6,borderRadius:999,background:cat.color,flexShrink:0}} />
+              <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cat.label}</span>
+            </span>
+          )}
+          <span className="mono" style={{fontSize:9,color:C.faint,flexShrink:0}}>⏱ {fmt(routine.default_minutes)}</span>
+        </span>
         <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
           <button onClick={()=>setExpanded((e)=>!e)} title="Sous-tâches" style={{background:"none",border:`1px solid ${C.border2}`,borderRadius:8,
             cursor:"pointer",fontSize:10,color:subs.length?C.muted:C.faint,display:"flex",alignItems:"center",gap:3,padding:"2px 5px"}}>
