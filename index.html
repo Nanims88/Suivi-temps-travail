@@ -388,7 +388,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   @media (max-width: 520px) {
     .routines-week { grid-template-columns: 1fr; }
   }
-  .saisie-layout { display:grid; grid-template-columns: 1fr 360px 300px; gap:20px; align-items:start; }
+  .saisie-layout { display:grid; grid-template-columns: minmax(380px,1.3fr) minmax(320px,1fr) minmax(280px,0.9fr); gap:20px; align-items:start; }
   @media (max-width: 1280px) {
     .saisie-layout { grid-template-columns: 1fr 360px; }
     .saisie-routines-col { grid-column: 1 / -1; }
